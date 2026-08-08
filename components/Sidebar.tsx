@@ -47,6 +47,7 @@ export default function Sidebar() {
   };
 
   // 🌍 MENÚ TRADUCIDO AL INGLÉS (Las rutas internas '/ruta' se quedan igual para no romper los links)
+// 🌍 MENÚ TRADUCIDO AL INGLÉS (Las rutas internas '/ruta' se quedan igual para no romper los links)
   const navLinks = [
     { nombre: 'Command Center', ruta: '/', icon: <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /> },
     { nombre: 'Kanban Board (Floor)', ruta: '/piso', icon: <path strokeLinecap="round" strokeLinejoin="round" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" /> },
@@ -55,6 +56,10 @@ export default function Sidebar() {
     { nombre: 'Gantt Schedule', ruta: '/gantt', icon: <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /> },
     { nombre: 'Inventory (Spares)', ruta: '/inventario', icon: <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /> },
     { nombre: 'Equipment & Assets', ruta: '/equipos', icon: <path strokeLinecap="round" strokeLinejoin="round" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" /> },
+    
+    // NUEVO BOTÓN DE TELEMETRÍA
+    // NUEVO BOTÓN DE TELEMETRÍA (Directo al Hub general)
+    { nombre: 'Live Telemetry', ruta: '/telemetria', icon: <path strokeLinecap="round" strokeLinejoin="round" d="M21 12h-4l-3 9L9 3l-3 9H3" /> },
   ];
 
   return (

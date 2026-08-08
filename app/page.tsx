@@ -1,27 +1,33 @@
 // @ts-nocheck
 "use client"
 
-import { useEffect, useState } from "react"
-import { supabase } from "@/lib/supabase"
+import React, { useEffect, useState } from "react"
+import { supabase } from "@/lib/supabase" // Ajusta esta ruta según la estructura de tu proyecto
 import Link from "next/link"
+import {
+  Package, Layers, Zap, Wifi, Wrench, Activity, AlertCircle, CheckCircle2, ChevronRight, Plus, Minus, Maximize
+} from "lucide-react"
 
 export default function CommandCenterPage() {
   const [ordenes, setOrdenes] = useState<any[]>([])
   const [equipos, setEquipos] = useState<any[]>([])
   const [cargando, setCargando] = useState(true)
-  
   const [telemetria, setTelemetria] = useState<any>({})
   const [mostrarSaludo, setMostrarSaludo] = useState(true) 
   const [saludoTexto, setSaludoTexto] = useState("Hello")
   const [nombreUsuario, setNombreUsuario] = useState("Executive") 
+  
+  const [viewMode, setViewMode] = useState<"2D" | "3D">("2D")
+  const [zoomLevel, setZoomLevel] = useState(1.1)
 
   useEffect(() => {
-    const yaVisto = sessionStorage.getItem('saludoKinetix');
+    // Manejo del saludo inicial
+    const yaVisto = sessionStorage.getItem('saludoKinetixClean');
     if (yaVisto) {
       setMostrarSaludo(false); 
     } else {
-      sessionStorage.setItem('saludoKinetix', 'true');
-      setTimeout(() => setMostrarSaludo(false), 3800); 
+      sessionStorage.setItem('saludoKinetixClean', 'true');
+      setTimeout(() => setMostrarSaludo(false), 2500); 
     }
 
     async function inicializar() {
@@ -35,7 +41,6 @@ export default function CommandCenterPage() {
       else if (hora < 19) setSaludoTexto("Good afternoon");
       else setSaludoTexto("Good evening");
 
-      // Consultas a BD (Se mantienen en español para no romper la conexión)
       const { data: dataOrdenes } = await supabase.from("ordenes_trabajo").select("*, equipos(nombre, area)").order("creado_at", { ascending: false }).limit(50)
       if (dataOrdenes) setOrdenes(dataOrdenes)
 
@@ -47,7 +52,7 @@ export default function CommandCenterPage() {
     
     inicializar()
 
-    // Jalar telemetría del ESP32/Wokwi
+    // 1. Traer la última telemetría al cargar
     const fetchTelemetria = async () => {
       const { data } = await supabase
         .from('lecturas_iot')
@@ -67,14 +72,36 @@ export default function CommandCenterPage() {
     };
 
     fetchTelemetria();
-    const intervaloIot = setInterval(fetchTelemetria, 5000);
-    
-    return () => clearInterval(intervaloIot);
+
+    // 2. Suscripción a Supabase Realtime (WebSockets)
+    const canalIoT = supabase
+      .channel('telemetria-en-vivo')
+      .on(
+        'postgres_changes',
+        { 
+          event: 'INSERT', 
+          schema: 'public', 
+          table: 'lecturas_iot' 
+        },
+        (payload) => {
+          // Actualiza al instante solo la máquina que mandó el dato nuevo
+          setTelemetria((prev) => ({
+            ...prev,
+            [payload.new.maquina_id]: payload.new
+          }));
+        }
+      )
+      .subscribe();
+
+    // Limpiamos el canal al salir de la página
+    return () => {
+      supabase.removeChannel(canalIoT);
+    };
   }, [])
 
-  const obtenerEstadoMaquina = (equipoId: string) => {
+  // Estado base basado puramente en Órdenes de Trabajo (CMMS)
+  const obtenerEstadoBaseMaquina = (equipoId: string) => {
     if (!equipoId) return 'OPERATING'; 
-    // Lógica interna se mantiene en español para empatar con la BD
     const ordenesActivas = ordenes.filter(o => o.equipo_id === equipoId && (o.estatus === 'Abierta' || o.estatus === 'Pendiente' || o.estatus === 'En Progreso'));
     if (ordenesActivas.length === 0) return 'OPERATING';
     const fallaCritica = ordenesActivas.find(o => o.tipo_mantenimiento !== 'Preventivo');
@@ -82,9 +109,9 @@ export default function CommandCenterPage() {
     return 'MAINTENANCE';
   }
 
-  // 📍 COORDENADAS EXACTAS
+  // UUID REAL ASIGNADO A LA PANEL SAW
   const maquinasLayout = [
-    { id: 'id-panel-saw', nombre: 'Panel Saw', x: 10, y: 15 },
+    { id: '65d5a5df-89bd-4107-877a-6d41bb7fe3b9', nombre: 'CNC Panel Saw', x: 10, y: 15 },
     { id: '123e4567-e89b-12d3-a456-426614174000', nombre: 'CNC Router #1 (Weeke)', x: 28, y: 15 },
     { id: 'id-router-2', nombre: 'CNC Router #2', x: 42, y: 15 },
     { id: 'id-dowel', nombre: 'CNC Dowel Drill', x: 55, y: 15 },
@@ -92,187 +119,428 @@ export default function CommandCenterPage() {
     { id: 'id-unisand', nombre: 'Unisand', x: 82, y: 75 }
   ];
 
-  // Lógica interna se mantiene en español
   const fallasActivas = ordenes.filter(o => o.tipo_mantenimiento !== 'Preventivo' && o.estatus !== 'Cerrada')
   const tecnicosActivos = ordenes.filter(o => o.estatus === 'En Progreso').length
 
+  const ordAbiertas = ordenes.filter(o => o.estatus === 'Abierta' || o.estatus === 'Pendiente').length;
+  const ordProgreso = tecnicosActivos;
+  const ordCerradas = ordenes.filter(o => o.estatus === 'Cerrada').length;
+  const totalOrdenes = ordenes.length || 1; 
+
+  const layoutTransform = viewMode === '3D' 
+    ? `rotateX(60deg) rotateZ(-45deg) scale(${0.85 * zoomLevel}) translateY(16px)`
+    : `scale(${zoomLevel})`;
+
   return (
-    <>
+    <div className="w-full text-slate-300 font-sans animate-in fade-in duration-700 bg-[#0b101a] min-h-screen">
+      
       {mostrarSaludo && (
-        <div className={`fixed inset-0 z-[99999] bg-[#070B14] flex flex-col items-center justify-center transition-opacity duration-1000 ${cargando ? 'opacity-100' : 'opacity-95'}`}>
-          <div className="absolute inset-0 bg-gradient-to-br from-emerald-900/10 to-transparent pointer-events-none"></div>
-          <div className="w-24 h-24 bg-emerald-500 rounded-3xl flex items-center justify-center shadow-[0_0_60px_rgba(16,185,129,0.3)] mb-8 animate-bounce">
-            <svg className="w-14 h-14 text-[#070B14]" fill="currentColor" viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l2-8z" /></svg>
+        <div className={`fixed inset-0 z-[99999] bg-[#0b101a] flex flex-col items-center justify-center transition-opacity duration-700 ${cargando ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg">
+              <Activity className="w-6 h-6 text-white" />
+            </div>
+            <h1 className="text-3xl font-semibold text-white tracking-tight">KINETIX</h1>
           </div>
-          <h1 className="text-4xl md:text-5xl font-black text-white mb-2 tracking-tight animate-in slide-in-from-bottom-5 duration-700">
-            {saludoTexto}, {nombreUsuario}!
-          </h1>
-          <h2 className="text-xl md:text-2xl font-black tracking-tight text-white/40 mb-8 animate-in slide-in-from-bottom-5 duration-700 delay-150">
-            KINETIX <span className="text-emerald-500/40 font-medium">Pro</span>
-          </h2>
-          <div className="flex items-center gap-3 animate-pulse">
-            <div className="w-5 h-5 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
-            <p className="text-emerald-400/80 font-bold tracking-widest uppercase text-sm">Synchronizing plant telemetry...</p>
+          <div className="flex items-center gap-3 text-slate-400">
+            <div className="w-4 h-4 border-2 border-slate-500 border-t-blue-500 rounded-full animate-spin"></div>
+            <p className="text-sm font-medium">Loading workspace...</p>
           </div>
         </div>
       )}
 
-      <div className="space-y-6 animate-in fade-in duration-700 pb-20">
+      <div className="space-y-6 pb-20 pt-6 px-2 md:px-6 max-w-[1700px] mx-auto">
         
-        <div className="flex flex-col md:flex-row justify-between md:items-end gap-4 mb-4 pt-4 border-b border-slate-800 pb-6">
+        {/* HEADER */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4 border-b border-slate-800/60 pb-6">
           <div>
-            <div className="flex items-center gap-3 mb-2">
-              <div className="px-3 py-1 bg-emerald-500/10 border border-emerald-500/30 rounded-full flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-                <span className="text-emerald-400 text-[10px] font-black uppercase tracking-widest">System Online</span>
-              </div>
-              <span className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">JBI Corporate</span>
+            <div className="flex items-center gap-2 mb-1 text-slate-400 text-xs font-medium">
+              <span>JBI Corporate</span>
+              <ChevronRight className="w-3 h-3" />
+              <span>Nogales Plant</span>
+              <ChevronRight className="w-3 h-3" />
+              <span className="text-slate-200">Command Center</span>
             </div>
-            <h1 className="text-4xl font-black tracking-tight text-white">Command Center</h1>
-            <p className="text-slate-400 text-sm mt-1">SCADA satellite supervision & live operations status</p>
+            <h1 className="text-3xl font-semibold text-white tracking-tight">
+              Plant Telemetry Overview
+            </h1>
           </div>
           <div className="flex gap-3">
-            <Link href="/piso" className="bg-slate-900 hover:bg-slate-800 border border-slate-700 text-white px-5 py-2.5 rounded-xl font-bold transition-all text-sm flex items-center gap-2">
-              <svg className="w-4 h-4 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg>
-              View Kanban Board
+            <Link href="/piso" className="bg-white hover:bg-slate-100 text-slate-900 px-5 py-2.5 rounded-lg transition-colors text-sm font-bold flex items-center gap-2 shadow-sm">
+              <Layers className="w-4 h-4" />
+              Kanban Board
             </Link>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-[#0B1221] border border-slate-800 p-5 rounded-3xl shadow-xl relative overflow-hidden group hover:border-emerald-500/30 transition-all">
-            <div className="absolute -right-4 -top-4 w-16 h-16 bg-emerald-500/5 rounded-full group-hover:scale-150 transition-transform"></div>
-            <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest mb-1">Network Health</p>
-            <h3 className="text-2xl font-black text-white flex items-center gap-2"><span className="text-emerald-500">100</span>%</h3>
-          </div>
-          <div className="bg-[#0B1221] border border-slate-800 p-5 rounded-3xl shadow-xl relative overflow-hidden group hover:border-amber-500/30 transition-all">
-            <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest mb-1">Floor Technicians</p>
-            <h3 className="text-2xl font-black text-white flex items-center gap-2"><span className="text-amber-500">{tecnicosActivos}</span></h3>
-          </div>
-          <div className="bg-[#0B1221] border border-slate-800 p-5 rounded-3xl shadow-xl relative overflow-hidden group hover:border-red-500/30 transition-all">
-            <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest mb-1">Critical Alerts</p>
-            <h3 className="text-2xl font-black text-white flex items-center gap-2"><span className="text-red-500">{fallasActivas.length}</span></h3>
-          </div>
-          <div className="bg-[#0B1221] border border-slate-800 p-5 rounded-3xl shadow-xl relative overflow-hidden group hover:border-blue-500/30 transition-all">
-            <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest mb-1">Total Assets</p>
-            <h3 className="text-2xl font-black text-white flex items-center gap-2"><span className="text-blue-500">{equipos.length}</span></h3>
-          </div>
+        {/* KPIs */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-6">
+          <KpiCard title="Total Assets" value={equipos.length || 0} subtitle="Active Inventory" color="blue" icon={<Package className="w-5 h-5 text-blue-300" />} />
+          <KpiCard title="System Status" value="100%" subtitle="All systems nominal" color="green" icon={<Wifi className="w-5 h-5 text-green-400" />} />
+          <KpiCard title="Active Faults" value={fallasActivas.length} subtitle={fallasActivas.length > 0 ? "Requires attention" : "No critical issues"} color="red" icon={<Zap className="w-5 h-5 text-red-400" />} />
+          <KpiCard title="Techs on Floor" value={tecnicosActivos} subtitle="Assigned to work orders" color="yellow" icon={<Wrench className="w-5 h-5 text-yellow-400" />} />
         </div>
 
-        {/* MAPA DE PLANTA REAL */}
-        <div className="bg-[#0B1221] border border-slate-800 rounded-3xl p-6 shadow-2xl flex flex-col">
+        {/* SECCIÓN CENTRAL: MAPA + MEDIDORES */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-6">
           
-          <div className="flex justify-between items-center mb-6">
-            <div>
-              <h3 className="text-white font-black text-xl">Plant Layout (Live Telemetry)</h3>
-              <p className="text-slate-500 text-xs font-bold uppercase tracking-widest">Topographical mapping of IoT assets</p>
-            </div>
-            <div className="flex gap-4 bg-slate-900/50 p-3 rounded-xl border border-slate-800">
-              <span className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_#10b981]"></div> Operating
-              </span>
-              <span className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                <div className="w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_8px_#ef4444] animate-pulse"></div> Down
-              </span>
-              <span className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                <div className="w-2.5 h-2.5 rounded-full bg-amber-500 shadow-[0_0_8px_#f59e0b]"></div> Maintenance
-              </span>
-            </div>
-          </div>
-
-          {/* CONTENEDOR DE LA IMAGEN AUTOCAD */}
-          <div className="w-full relative bg-[#070B14] border border-slate-700 rounded-2xl shadow-inner mt-4">
+          <div className="lg:col-span-8 bg-[#121826] border border-[#1f2937] rounded-2xl flex flex-col shadow-xl z-20 relative">
             
-            <img 
-              src="/plano.png" 
-              alt="JBI Plant Layout" 
-              className="w-full h-auto object-contain opacity-80 mix-blend-screen rounded-2xl"
-              style={{ minHeight: '500px' }}
-            />
-
-            {/* PUNTOS DE LAS MÁQUINAS */}
-            {cargando ? (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/50 text-emerald-500 font-bold animate-pulse backdrop-blur-sm rounded-2xl">
-                Connecting to ESP32...
+            {/* Header del Mapa */}
+            <div className="px-6 py-4 flex justify-between items-center border-b border-[#1f2937] bg-[#121826] rounded-t-2xl z-30 relative">
+              <div className="flex items-center gap-3">
+                <h2 className="text-white font-medium text-lg">Facility Layout</h2>
+                <span className="px-2 py-0.5 rounded-md bg-blue-500/20 text-blue-400 text-[10px] font-black tracking-widest border border-blue-500/30 uppercase animate-pulse">Live</span>
               </div>
-            ) : (
-              maquinasLayout.map((maquina) => {
-                const estado = obtenerEstadoMaquina(maquina.id);
-                const dataIoT = telemetria[maquina.id];
+              
+              <div className="flex bg-[#0b101a] rounded-lg border border-[#1f2937] p-1">
+                <button onClick={() => setViewMode('2D')} className={`px-4 py-1.5 text-xs font-bold transition-colors rounded-md ${viewMode === '2D' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}>2D Map</button>
+                <button onClick={() => setViewMode('3D')} className={`px-4 py-1.5 text-xs font-bold transition-colors rounded-md ${viewMode === '3D' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}>3D View</button>
+              </div>
+            </div>
 
-                let colorLED = 'bg-emerald-500 shadow-[0_0_15px_#10b981]';
-                let animation = '';
-                let colorBorder = 'border-emerald-400';
+            {/* CONTENEDOR DEL PLANO */}
+            <div className="flex-1 relative bg-[#070b14] min-h-[600px] w-full rounded-b-2xl flex items-center justify-center overflow-hidden p-4">
+              
+              {/* CONTROLES DE ZOOM FLOTANTES */}
+              <div className="absolute right-6 bottom-6 flex flex-col gap-2 z-[999999] bg-[#0b101a]/80 p-2 rounded-xl border border-slate-700/50 backdrop-blur-md">
+                <button onClick={() => setZoomLevel(p => Math.min(p + 0.3, 4.0))} className="w-10 h-10 bg-[#1e293b] hover:bg-blue-600 border border-slate-600 rounded-lg flex items-center justify-center text-white transition-all shadow-lg">
+                  <Plus className="w-5 h-5" />
+                </button>
+                <button onClick={() => setZoomLevel(1.1)} className="w-10 h-10 bg-[#1e293b] hover:bg-blue-600 border border-slate-600 rounded-lg flex items-center justify-center text-white transition-all shadow-lg" title="Reset Zoom">
+                  <Maximize className="w-4 h-4" />
+                </button>
+                <button onClick={() => setZoomLevel(p => Math.max(p - 0.3, 0.5))} className="w-10 h-10 bg-[#1e293b] hover:bg-blue-600 border border-slate-600 rounded-lg flex items-center justify-center text-white transition-all shadow-lg">
+                  <Minus className="w-5 h-5" />
+                </button>
+              </div>
 
-                if (estado === 'DOWN') {
-                  colorLED = 'bg-red-500 shadow-[0_0_20px_#ef4444]';
-                  animation = 'animate-pulse';
-                  colorBorder = 'border-red-400';
-                } else if (estado === 'MAINTENANCE') {
-                  colorLED = 'bg-amber-500 shadow-[0_0_15px_#f59e0b]';
-                  colorBorder = 'border-amber-400';
-                }
+              <div 
+                className="relative transition-transform duration-700 ease-[cubic-bezier(0.4,0,0.2,1)] w-full max-w-5xl perspective-container"
+                style={{ transform: layoutTransform }}
+              >
+                
+                <img src="/plano.png" alt="Layout" className="w-full h-auto opacity-85 block relative z-10" />
 
-                return (
-                  <div 
-                    key={maquina.id}
-                    className="absolute group cursor-crosshair z-20"
-                    style={{ left: `${maquina.x}%`, top: `${maquina.y}%`, transform: 'translate(-50%, -50%)' }}
-                  >
-                    {/* FOCO LED REDISEÑADO */}
-                    <div className="relative flex items-center justify-center w-10 h-10 bg-[#070B14]/90 rounded-full border border-slate-500/50 backdrop-blur-md shadow-[0_0_20px_rgba(0,0,0,0.9)] transition-transform group-hover:scale-110">
-                      {estado === 'DOWN' && <div className={`absolute inset-0 rounded-full ${colorLED} opacity-40 animate-ping`}></div>}
-                      <div className={`w-3.5 h-3.5 rounded-full ${colorLED} ${animation} border-2 ${colorBorder} transition-colors duration-500`}></div>
-                    </div>
+                {maquinasLayout.map((maquina) => {
+                  let estado = obtenerEstadoBaseMaquina(maquina.id); 
+                  const dataIoT = telemetria[maquina.id];
 
-                    {/* TOOLTIP FLOTANTE */}
-                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 w-60 opacity-0 group-hover:opacity-100 transition-all duration-300 pointer-events-none z-[100] transform group-hover:-translate-y-2">
-                      <div className="bg-[#1e293b] border border-slate-500 p-4 rounded-xl shadow-[0_25px_50px_rgba(0,0,0,0.95)] flex flex-col relative">
-                        <p className="text-sky-400 font-black text-sm uppercase tracking-wider mb-3 border-b border-slate-600 pb-2">{maquina.nombre}</p>
-                        
-                        {/* Datos de Sensores */}
-                        {dataIoT ? (
-                          <div className="space-y-2 mb-4">
-                            <div className="flex justify-between items-center text-xs">
-                              <span className="text-slate-400 font-bold tracking-wide">Amperage:</span>
-                              <span className="text-emerald-400 font-mono bg-[#070B14] border border-slate-700 px-2 py-1 rounded shadow-inner">{Number(dataIoT.amperaje_motor).toFixed(2)} A</span>
+                  // === FUSIÓN DE LÓGICA: CMMS + IoT ===
+                  if (estado === 'OPERATING') {
+                    if (!dataIoT) {
+                      estado = 'OFFLINE';
+                    } else {
+                      const amps = Number(dataIoT.amperaje_motor);
+                      if (amps <= 0.5) { 
+                        estado = 'IDLE'; 
+                      } else if (amps >= 32.0) { // CALIBRADO CON PLACA DE HOLZMA HPP 350
+                        estado = 'OVERLOAD'; 
+                      } else { 
+                        estado = 'CUTTING'; 
+                      }
+                    }
+                  }
+
+                  // === ASIGNACIÓN DINÁMICA DE COLORES ===
+                  let dotColor = 'bg-slate-600 shadow-[0_0_10px_#475569]';
+                  let pulseClass = '';
+                  let label = 'Offline / No Data';
+                  let labelColor = 'bg-slate-500/20 text-slate-400';
+
+                  if (estado === 'DOWN') {
+                    dotColor = 'bg-rose-600 shadow-[0_0_20px_#e11d48]';
+                    pulseClass = 'animate-ping opacity-60';
+                    label = 'Critical Fault';
+                    labelColor = 'bg-rose-500/20 text-rose-400';
+                  } else if (estado === 'MAINTENANCE') {
+                    dotColor = 'bg-amber-500 shadow-[0_0_15px_#f59e0b]';
+                    label = 'Maintenance';
+                    labelColor = 'bg-amber-500/20 text-amber-400';
+                  } else if (estado === 'OVERLOAD') {
+                    dotColor = 'bg-red-500 shadow-[0_0_25px_#ef4444]';
+                    pulseClass = 'animate-pulse';
+                    label = 'OVERLOAD WARNING';
+                    labelColor = 'bg-red-500/30 text-red-400 font-black border border-red-500/50 uppercase';
+                  } else if (estado === 'CUTTING') {
+                    dotColor = 'bg-emerald-500 shadow-[0_0_15px_#10b981]';
+                    label = 'Operating';
+                    labelColor = 'bg-emerald-500/20 text-emerald-400';
+                  } else if (estado === 'IDLE') {
+                    dotColor = 'bg-sky-400 shadow-[0_0_15px_#38bdf8]';
+                    label = 'Idle (Standby)';
+                    labelColor = 'bg-sky-500/20 text-sky-400';
+                  }
+
+                  // Posicionamiento inteligente del Tooltip
+                  const isTooTop = maquina.y < 35; 
+                  const isTooLeft = maquina.x < 25;
+                  const isTooRight = maquina.x > 75;
+
+                  const tooltipYClass = isTooTop 
+                    ? 'top-[calc(100%+10px)] group-hover:translate-y-0 translate-y-[-10px]' 
+                    : 'bottom-[calc(100%+10px)] group-hover:translate-y-0 translate-y-4'; 
+                  
+                  const tooltipXClass = isTooLeft 
+                    ? 'left-0' 
+                    : isTooRight ? 'right-0' : 'left-1/2 -translate-x-1/2';
+
+                  return (
+                    <div 
+                      key={maquina.id}
+                      className="absolute group cursor-crosshair z-40 hover:z-[99999]" 
+                      style={{ left: `${maquina.x}%`, top: `${maquina.y}%`, transform: 'translate(-50%, -50%)' }}
+                    >
+                      {/* Punto de Máquina con Halo */}
+                      <div className="relative flex items-center justify-center w-14 h-14 bg-black/60 rounded-full shadow-[0_0_20px_black] border border-white/10 transition-transform group-hover:scale-125">
+                        { (estado === 'DOWN' || estado === 'OVERLOAD') && 
+                          <div className={`absolute w-8 h-8 rounded-full ${dotColor} ${pulseClass}`}></div> 
+                        }
+                        <div className={`w-4 h-4 rounded-full ${dotColor} border-[3px] border-[#070b14] z-10`}></div>
+                      </div>
+
+                      {/* Tooltip HUD */}
+                      <div className={`absolute ${tooltipYClass} ${tooltipXClass} w-60 opacity-0 group-hover:opacity-100 transition-all duration-300 pointer-events-none z-[99999] ${viewMode === '3D' ? 'counter-rotate-inner' : ''} transform`}>
+                        <div className="bg-[#0f172a]/95 backdrop-blur-xl border border-slate-600 rounded-lg shadow-[0_10px_40px_rgba(0,0,0,0.8)] p-3 relative">
+                          
+                          <p className="text-white font-bold text-sm mb-2 pb-1.5 border-b border-slate-600">
+                            {maquina.nombre}
+                          </p>
+                          
+                          {dataIoT ? (
+                            <table className="w-full text-xs font-mono my-2">
+                              <tbody>
+                                <tr>
+                                  <td className="text-slate-400 py-1">Amperage</td>
+                                  <td className={`${estado === 'OVERLOAD' ? 'text-red-400 animate-pulse' : 'text-emerald-400'} font-bold text-right`}>
+                                    {Number(dataIoT.amperaje_motor).toFixed(2)} A
+                                  </td>
+                                </tr>
+                                <tr>
+                                  <td className="text-slate-400 py-1">Cabinet Temperature</td>
+                                  <td className="text-amber-400 font-bold text-right">{Number(dataIoT.temperatura_olla).toFixed(1)} °C</td>
+                                </tr>
+                                <tr>
+                                  <td className="text-slate-400 py-1">Vibration</td>
+                                  <td className="text-sky-400 font-bold text-right">{Number(dataIoT.vibracion_x).toFixed(3)} G</td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          ) : (
+                            <div className="text-slate-500 text-xs mb-3 font-mono text-center py-3 bg-black/30 rounded border border-slate-700/50">
+                              Awaiting Telemetry...
                             </div>
-                            <div className="flex justify-between items-center text-xs">
-                              <span className="text-slate-400 font-bold tracking-wide">Glue Pot Temp:</span>
-                              <span className="text-amber-400 font-mono bg-[#070B14] border border-slate-700 px-2 py-1 rounded shadow-inner">{Number(dataIoT.temperatura_olla).toFixed(1)} °C</span>
-                            </div>
-                            <div className="flex justify-between items-center text-xs">
-                              <span className="text-slate-400 font-bold tracking-wide">Vibration:</span>
-                              <span className="text-sky-400 font-mono bg-[#070B14] border border-slate-700 px-2 py-1 rounded shadow-inner">{Number(dataIoT.vibracion_x).toFixed(3)} G</span>
-                            </div>
+                          )}
+
+                          {/* La etiqueta de estado final */}
+                          <div className={`mt-2 py-1.5 rounded text-[11px] font-black tracking-widest text-center ${labelColor}`}>
+                            {label}
                           </div>
-                        ) : (
-                          <div className="text-slate-500 text-[10px] font-mono mb-4 mt-2 text-center italic bg-[#070B14] py-3 rounded-lg border border-slate-800/50">
-                            Waiting for telemetry...
-                          </div>
-                        )}
-
-                        {/* Badge de Mantenimiento */}
-                        <div className={`py-2 rounded-md text-[10px] font-black uppercase tracking-widest text-center border ${
-                          estado === 'DOWN' ? 'bg-red-500/20 text-red-400 border-red-500/50' :
-                          estado === 'MAINTENANCE' ? 'bg-amber-500/20 text-amber-400 border-amber-500/50' :
-                          'bg-emerald-500/20 text-emerald-400 border-emerald-500/50'
-                        }`}>
-                          {estado === 'DOWN' ? 'Active Fault' : estado}
                         </div>
                       </div>
-                      
-                      {/* Flechita del tooltip */}
-                      <div className="w-4 h-4 bg-[#1e293b] border-b border-r border-slate-500 transform rotate-45 absolute -bottom-2 left-1/2 -translate-x-1/2 z-[-1]"></div>
                     </div>
-                  </div>
-                )
-              })
-            )}
+                  )
+                })}
+              </div>
+            </div>
           </div>
 
+          {/* Panel Derecho: Rendimiento */}
+          <div className="lg:col-span-4 flex flex-col gap-6 relative z-10">
+            <div className="bg-[#121826] border border-[#1f2937] rounded-2xl p-6 shadow-xl">
+              <h3 className="text-white font-medium mb-6">Real-Time Performance</h3>
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                <CircularGauge value={92} max={100} label="PM Compliance" subLabel="Goal: 95%" color="#22c55e" format="%" />
+                <CircularGauge value={fallasActivas.length > 0 ? 1.8 : 0} max={5} label="Avg MTTR" subLabel="Goal: < 2 hrs" color="#3b82f6" format="h" />
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <MiniGauge value={tecnicosActivos} label="Active Techs" color="#eab308" unit="Users" />
+                <MiniGauge value={ordenes.length} label="Work Orders" color="#a855f7" unit="YTD" />
+              </div>
+            </div>
+
+            <div className="bg-[#121826] border border-[#1f2937] rounded-2xl p-6 shadow-xl flex-1 flex flex-col">
+              <div className="flex justify-between items-center mb-5">
+                <h3 className="text-white font-medium">Attention Required</h3>
+                <span className="text-xs font-medium text-slate-400">{fallasActivas.length} Issues</span>
+              </div>
+              
+              <div className="space-y-3 overflow-y-auto custom-scrollbar flex-1">
+                {fallasActivas.slice(0,4).map((falla, i) => (
+                  <div key={i} className="bg-[#0b101a] hover:bg-slate-800/80 transition-colors p-4 rounded-xl border border-[#1f2937] flex gap-3 items-start">
+                    <div className="w-8 h-8 rounded-lg bg-rose-500/10 border border-rose-500/20 flex items-center justify-center shrink-0 mt-0.5">
+                      <AlertCircle className="w-4 h-4 text-rose-400" />
+                    </div>
+                    <div>
+                      <p className="text-slate-200 text-sm font-bold">{falla.equipos?.nombre || 'Unknown Asset'}</p>
+                      <p className="text-xs text-slate-500 mt-1 line-clamp-2">{falla.descripcion}</p>
+                    </div>
+                  </div>
+                ))}
+                {fallasActivas.length === 0 && (
+                  <div className="flex flex-col items-center justify-center h-full text-center py-8">
+                    <CheckCircle2 className="w-10 h-10 text-emerald-500/50 mb-3" />
+                    <p className="text-sm font-medium text-slate-300">All Systems Clear</p>
+                    <p className="text-xs text-slate-500 mt-1">No pending critical issues.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Paneles Inferiores */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="bg-[#121826] border border-[#1f2937] rounded-2xl p-6 shadow-xl flex items-center justify-between">
+            <div className="flex-1">
+              <h2 className="text-white font-medium mb-6">Work Order Distribution</h2>
+              <div className="space-y-4">
+                <LegendItem color="bg-slate-400" label="Open / Pending" value={ordAbiertas} />
+                <LegendItem color="bg-blue-500" label="In Progress" value={ordProgreso} />
+                <LegendItem color="bg-emerald-500" label="Completed" value={ordCerradas} />
+              </div>
+            </div>
+            <div className="w-32 h-32 relative shrink-0 ml-6">
+              <CleanDonutChart pOpen={(ordAbiertas/totalOrdenes)*100} pProg={(ordProgreso/totalOrdenes)*100} pClosed={(ordCerradas/totalOrdenes)*100} />
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <span className="text-white font-semibold text-2xl">{ordenes.length}</span>
+                <span className="text-xs text-slate-500">Total</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-[#121826] border border-[#1f2937] rounded-2xl p-6 lg:col-span-2 shadow-xl">
+            <h2 className="text-white font-medium mb-6">Common Failure Analysis</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-6">
+              <CleanProgress code="MECH" label="Bearing Wear" pct={28} color="bg-slate-400" />
+              <CleanProgress code="ELEC" label="Sensor Calibration" pct={42} color="bg-blue-500" />
+              <CleanProgress code="PNEU" label="Air Pressure Drop" pct={15} color="bg-amber-500" />
+              <CleanProgress code="HYDR" label="Fluid Low Level" pct={10} color="bg-purple-500" />
+            </div>
+          </div>
         </div>
       </div>
-    </>
+
+      <style dangerouslySetInnerHTML={{__html: `
+        .counter-rotate-inner { 
+          transform: rotateZ(45deg) rotateX(-60deg) translateY(-20px) translateZ(30px) !important; 
+          transform-origin: bottom center;
+        }
+        .perspective-container { transform-style: preserve-3d; perspective: 1200px; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #1f2937; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #374151; }
+      `}} />
+    </div>
   )
+}
+
+// === COMPONENTES SECUNDARIOS (NO TOCAR) ===
+
+function KpiCard({ title, value, subtitle, color, icon }: any) {
+  const bgColors = {
+    blue: "bg-gradient-to-br from-[#1e3a8a] to-[#172554] border-blue-900/50",
+    green: "bg-gradient-to-br from-[#14532d] to-[#052e16] border-green-900/50",
+    red: "bg-gradient-to-br from-[#7f1d1d] to-[#450a0a] border-red-900/50",
+    yellow: "bg-gradient-to-br from-[#713f12] to-[#422006] border-yellow-900/50",
+  };
+  return (
+    <div className={`${bgColors[color as keyof typeof bgColors]} border rounded-2xl p-5 relative overflow-hidden shadow-lg`}>
+      <div className="flex justify-between items-start mb-2">
+        <h3 className="text-white font-medium text-sm">{title}</h3>
+        <div className="p-1.5 bg-black/20 rounded-lg">{icon}</div>
+      </div>
+      <div className="mt-4">
+        <p className="text-4xl font-bold text-white mb-1">{value}</p>
+        <p className="text-xs text-gray-400">{subtitle}</p>
+      </div>
+    </div>
+  );
+}
+
+function CircularGauge({ value, max, label, subLabel, color, format }: any) {
+  const radius = 35;
+  const circumference = 2 * Math.PI * radius;
+  const strokeDashoffset = circumference - (value / max) * circumference;
+  return (
+    <div className="flex flex-col items-center">
+      <span className="text-gray-400 text-xs mb-3">{label}</span>
+      <div className="relative w-24 h-24">
+        <svg className="w-full h-full transform -rotate-90">
+          <circle cx="48" cy="48" r={radius} fill="none" stroke="#1f2937" strokeWidth="8" />
+          <circle cx="48" cy="48" r={radius} fill="none" stroke={color} strokeWidth="8" strokeLinecap="round"
+            strokeDasharray={circumference} strokeDashoffset={strokeDashoffset} className="transition-all duration-1000 ease-out" />
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <span className="text-white font-bold text-xl">{value}<span className="text-sm font-normal ml-0.5">{format}</span></span>
+        </div>
+      </div>
+      <span className="text-gray-500 text-[10px] mt-2">{subLabel}</span>
+    </div>
+  );
+}
+
+function MiniGauge({ value, label, color, unit }: any) {
+  const radius = 20;
+  const circumference = 2 * Math.PI * radius;
+  return (
+    <div className="flex flex-col items-center">
+      <div className="relative w-14 h-14 mb-2">
+        <svg className="w-full h-full transform -rotate-90">
+          <circle cx="28" cy="28" r={radius} fill="none" stroke="#1f2937" strokeWidth="4" />
+          <circle cx="28" cy="28" r={radius} fill="none" stroke={color} strokeWidth="4" strokeLinecap="round"
+            strokeDasharray={circumference} strokeDashoffset={circumference * 0.3} />
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center leading-none">
+          <span className="text-white font-bold text-lg">{value}</span>
+          <span className="text-gray-500 text-[8px]">{unit}</span>
+        </div>
+      </div>
+      <span className="text-gray-400 text-xs text-center">{label}</span>
+    </div>
+  );
+}
+
+function LegendItem({ color, label, value }: any) {
+  return (
+    <div className="flex items-center justify-between text-sm">
+      <div className="flex items-center gap-3">
+        <div className={`w-2.5 h-2.5 rounded-full ${color}`}></div>
+        <span className="text-slate-300">{label}</span>
+      </div>
+      <span className="text-white font-medium">{value}</span>
+    </div>
+  );
+}
+
+function CleanDonutChart({ pOpen, pProg, pClosed }: { pOpen: number, pProg: number, pClosed: number }) {
+  const circ = 251.2;
+  const openDash = (pOpen / 100) * circ;
+  const progDash = (pProg / 100) * circ;
+  const closedDash = (pClosed / 100) * circ;
+
+  return (
+    <svg viewBox="0 0 100 100" className="w-full h-full transform -rotate-90 drop-shadow-md">
+      <circle cx="50" cy="50" r="40" fill="transparent" stroke="#1e293b" strokeWidth="8" />
+      <circle cx="50" cy="50" r="40" fill="transparent" stroke="#94a3b8" strokeWidth="8" strokeDasharray={`${openDash} ${circ}`} strokeDashoffset="0" className="transition-all duration-1000" strokeLinecap="round" />
+      <circle cx="50" cy="50" r="40" fill="transparent" stroke="#3b82f6" strokeWidth="8" strokeDasharray={`${progDash} ${circ}`} strokeDashoffset={-openDash} className="transition-all duration-1000" strokeLinecap="round" />
+      <circle cx="50" cy="50" r="40" fill="transparent" stroke="#10b981" strokeWidth="8" strokeDasharray={`${closedDash} ${circ}`} strokeDashoffset={-(openDash + progDash)} className="transition-all duration-1000" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function CleanProgress({ code, label, pct, color }: { code: string, label: string, pct: number, color: string }) {
+  return (
+    <div className="flex flex-col">
+      <div className="flex justify-between items-center mb-2">
+        <span className="text-slate-300 text-sm font-medium">{label}</span>
+        <span className="text-slate-400 text-xs font-medium">{pct}%</span>
+      </div>
+      <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
+        <div className={`h-full ${color} rounded-full transition-all duration-1000`} style={{ width: `${pct}%` }}></div>
+      </div>
+    </div>
+  );
 }
