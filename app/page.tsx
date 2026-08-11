@@ -110,13 +110,12 @@ export default function CommandCenterPage() {
   }
 
   // UUID REAL ASIGNADO A LA PANEL SAW
-  const maquinasLayout = [
+const maquinasLayout = [
     { id: '65d5a5df-89bd-4107-877a-6d41bb7fe3b9', nombre: 'CNC Panel Saw', x: 10, y: 15 },
     { id: '123e4567-e89b-12d3-a456-426614174000', nombre: 'CNC Router #1 (Weeke)', x: 28, y: 15 },
     { id: 'id-router-2', nombre: 'CNC Router #2', x: 42, y: 15 },
-    { id: 'id-dowel', nombre: 'CNC Dowel Drill', x: 55, y: 15 },
     { id: 'id-edgebander', nombre: 'Edge Bander', x: 65, y: 15 },
-    { id: 'id-unisand', nombre: 'Unisand', x: 82, y: 75 }
+    { id: 'id-dowel', nombre: 'CNC Dowell Drill', x: 78, y: 15 } /* <-- Ahora está a la derecha del 65 */
   ];
 
   const fallasActivas = ordenes.filter(o => o.tipo_mantenimiento !== 'Preventivo' && o.estatus !== 'Cerrada')

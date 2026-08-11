@@ -9,9 +9,10 @@ export default function Sidebar() {
   const [menuAbierto, setMenuAbierto] = useState(false); 
   const [colapsado, setColapsado] = useState(false); 
   
-  // Estados para la Despedida
+  // Estados para la Despedida y Usuario
   const [mostrandoDespedida, setMostrandoDespedida] = useState(false);
-  const [nombreUsuario, setNombreUsuario] = useState("Juan Carlos");
+  const [nombreUsuario, setNombreUsuario] = useState("Cargando...");
+const [rol, setRol] = useState<string | null>(null); // <-- NUEVO: Estado para guardar el rol
   
   const pathname = usePathname();
   const router = useRouter();
@@ -22,8 +23,24 @@ export default function Sidebar() {
 
     async function obtenerUsuario() {
       const { data: { user } } = await supabase.auth.getUser();
-      if (user && user.user_metadata?.full_name) {
-        setNombreUsuario(user.user_metadata.full_name.split(' ')[0]);
+      
+      if (user) {
+        if (user.user_metadata?.full_name) {
+          setNombreUsuario(user.user_metadata.full_name.split(' ')[0]);
+        } else {
+          setNombreUsuario("Usuario");
+        }
+
+        // <-- NUEVO: Buscar el rol en tu tabla de perfiles
+        const { data: perfil } = await supabase
+          .from('perfiles')
+          .select('rol')
+          .eq('id', user.id)
+          .single();
+          
+        if (perfil) {
+          setRol((perfil as any).rol);
+        }
       }
     }
     obtenerUsuario();
@@ -46,28 +63,24 @@ export default function Sidebar() {
     }, 2500);
   };
 
-  // 🌍 MENÚ TRADUCIDO AL INGLÉS (Las rutas internas '/ruta' se quedan igual para no romper los links)
-// 🌍 MENÚ TRADUCIDO AL INGLÉS (Las rutas internas '/ruta' se quedan igual para no romper los links)
+  // 🌍 MENÚ TRADUCIDO AL INGLÉS Y CON SISTEMA DE PERMISOS
+  // 🌍 MENÚ TRADUCIDO AL INGLÉS Y CON SISTEMA DE PERMISOS (Supervisor ve TODO)
   const navLinks = [
-    { nombre: 'Command Center', ruta: '/', icon: <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /> },
-    { nombre: 'Kanban Board (Floor)', ruta: '/piso', icon: <path strokeLinecap="round" strokeLinejoin="round" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" /> },
-    { nombre: 'Executive Dashboard', ruta: '/directivo', icon: <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /> },
-    { nombre: 'Work Orders', ruta: '/ordenes', icon: <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /> },
-    { nombre: 'Gantt Schedule', ruta: '/gantt', icon: <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /> },
-    { nombre: 'Inventory (Spares)', ruta: '/inventario', icon: <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /> },
-    { nombre: 'Equipment & Assets', ruta: '/equipos', icon: <path strokeLinecap="round" strokeLinejoin="round" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" /> },
-    
-    // NUEVO BOTÓN DE TELEMETRÍA
-    // NUEVO BOTÓN DE TELEMETRÍA (Directo al Hub general)
-    { nombre: 'Live Telemetry', ruta: '/telemetria', icon: <path strokeLinecap="round" strokeLinejoin="round" d="M21 12h-4l-3 9L9 3l-3 9H3" /> },
+    { nombre: 'Command Center', ruta: '/', icon: <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />, roles: ['admin', 'supervisor'] },
+    { nombre: 'Kanban Board (Floor)', ruta: '/piso', icon: <path strokeLinecap="round" strokeLinejoin="round" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />, roles: ['admin', 'supervisor', 'tecnico'] },
+    { nombre: 'Executive Dashboard', ruta: '/directivo', icon: <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />, roles: ['admin', 'supervisor'] },
+    { nombre: 'Work Orders', ruta: '/ordenes', icon: <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />, roles: ['admin', 'supervisor', 'tecnico'] },
+    { nombre: 'Gantt Schedule', ruta: '/gantt', icon: <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />, roles: ['admin', 'supervisor'] },
+    { nombre: 'Inventory (Spares)', ruta: '/inventario', icon: <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />, roles: ['admin', 'supervisor'] },
+    { nombre: 'Equipment & Assets', ruta: '/equipos', icon: <path strokeLinecap="round" strokeLinejoin="round" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />, roles: ['admin', 'supervisor', 'tecnico'] },
+    { nombre: 'Live Telemetry', ruta: '/telemetria', icon: <path strokeLinecap="round" strokeLinejoin="round" d="M21 12h-4l-3 9L9 3l-3 9H3" />, roles: ['admin', 'supervisor'] },
   ];
 
   return (
     <>
-      {/* PANTALLA COMPLETA DE DESPEDIDA - TRADUCIDA */}
+      {/* PANTALLA COMPLETA DE DESPEDIDA */}
       {mostrandoDespedida && (
         <div className="fixed inset-0 z-[9999] bg-[#070B14] flex flex-col items-center justify-center animate-in fade-in duration-500">
-           {/* LOGO KINETIX GRIS PARA DESPEDIDA */}
            <div className="w-20 h-20 bg-slate-800 rounded-2xl flex items-center justify-center shadow-[0_0_30px_rgba(30,41,59,0.5)] mb-6">
               <svg className="w-12 h-12 text-slate-500" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M13 2L3 14h9l-1 8 10-12h-9l2-8z" />
@@ -124,7 +137,6 @@ export default function Sidebar() {
              {/* LOGO KINETIX ORIGINAL */}
              <div className={`flex items-center mb-10 mt-2 transition-all duration-300 ${colapsado ? 'justify-center' : 'pl-2 gap-3'}`}>
                 <div className="w-10 h-10 min-w-[40px] rounded-xl bg-emerald-500 flex items-center justify-center shadow-[0_0_20px_rgba(16,185,129,0.35)]">
-                  {/* EL RAYO EXACTO */}
                   <svg className="w-6 h-6 text-[#0B1121]" fill="currentColor" viewBox="0 0 24 24">
                     <path d="M13 2L3 14h9l-1 8 10-12h-9l2-8z" />
                   </svg>
@@ -137,7 +149,10 @@ export default function Sidebar() {
              </div>
 
              <ul className="space-y-2">
-                {navLinks.map((link) => {
+                {/* <-- NUEVO: FILTRO POR ROLES ANTES DE MAPEAR --> */}
+                {navLinks
+                  .filter((link) => !rol || link.roles.includes(rol))
+                  .map((link) => {
                   const isActive = pathname === link.ruta;
                   return (
                     <li key={link.nombre} title={colapsado ? link.nombre : ""}>
@@ -180,7 +195,10 @@ export default function Sidebar() {
                       <p className="text-sm font-bold text-white">{nombreUsuario}</p>
                       <div className="flex items-center gap-1.5 mt-0.5">
                         <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                        <span className="text-[10px] uppercase tracking-widest font-bold text-slate-500">Online</span>
+                        <span className="text-[10px] uppercase tracking-widest font-bold text-slate-500">
+                          {/* <-- NUEVO: Muestra el rol debajo del nombre --> */}
+                          {rol ? rol : 'Online'}
+                        </span>
                       </div>
                     </div>
                   )}
