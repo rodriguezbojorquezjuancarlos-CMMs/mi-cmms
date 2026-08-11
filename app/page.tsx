@@ -2,7 +2,7 @@
 "use client"
 
 import React, { useEffect, useState } from "react"
-import { supabase } from "@/lib/supabase" // Ajusta esta ruta según la estructura de tu proyecto
+import { supabase } from "@/lib/supabase"
 import Link from "next/link"
 import {
   Package, Layers, Zap, Wifi, Wrench, Activity, AlertCircle, CheckCircle2, ChevronRight, Plus, Minus, Maximize
@@ -113,9 +113,9 @@ export default function CommandCenterPage() {
 const maquinasLayout = [
     { id: '65d5a5df-89bd-4107-877a-6d41bb7fe3b9', nombre: 'CNC Panel Saw', x: 10, y: 15 },
     { id: '123e4567-e89b-12d3-a456-426614174000', nombre: 'CNC Router #1 (Weeke)', x: 28, y: 15 },
-    { id: 'id-router-2', nombre: 'CNC Router #2', x: 42, y: 15 },
-    { id: 'id-edgebander', nombre: 'Edge Bander', x: 65, y: 15 },
-    { id: 'id-dowel', nombre: 'CNC Dowell Drill', x: 78, y: 15 } /* <-- Ahora está a la derecha del 65 */
+    { id: '6520f324-8f68-4c3e-af1b-835a6b8b9612', nombre: 'CNC Router #2', x: 42, y: 15 },
+    { id: 'a809fd2d-0092-4cd3-b913-ff7cd69caee2', nombre: 'Edge Bander', x: 65, y: 15 },
+    { id: 'b31b663d-79e4-4c6b-8c3f-da8056d3f67d', nombre: 'CNC Dowell Drill', x: 78, y: 15 } 
   ];
 
   const fallasActivas = ordenes.filter(o => o.tipo_mantenimiento !== 'Preventivo' && o.estatus !== 'Cerrada')
@@ -156,7 +156,8 @@ const maquinasLayout = [
             <div className="flex items-center gap-2 mb-1 text-slate-400 text-xs font-medium">
               <span>JBI Corporate</span>
               <ChevronRight className="w-3 h-3" />
-              <span>Nogales Plant</span>
+              {/* ACÁ QUEDÓ ACTUALIZADO A LONG BEACH FACILITY */}
+              <span>Long Beach Facility</span>
               <ChevronRight className="w-3 h-3" />
               <span className="text-slate-200">Command Center</span>
             </div>

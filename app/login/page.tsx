@@ -113,7 +113,7 @@ export default function LoginPage() {
       {/* LEYENDA CORPORATIVA INFERIOR */}
       <div className="absolute bottom-8 flex flex-col items-center text-slate-500 text-sm z-10">
         <p className="font-bold tracking-[0.2em] uppercase mb-1 text-slate-400 text-xs">
-          JBI Corporate Operations • Nogales
+          JBI Corporate Operations
         </p>
         <p className="text-slate-600 text-xs font-semibold">
           Kinetix Pro CMMS &copy; {new Date().getFullYear()}

@@ -5,7 +5,6 @@ import { useEffect, useState } from "react"
 import { supabase } from "@/lib/supabase"
 import { useParams, useRouter } from "next/navigation"
 
-
 export default function DetalleOrdenPage() {
   const { id } = useParams()
   const router = useRouter()
@@ -24,6 +23,9 @@ export default function DetalleOrdenPage() {
   const [previewUrlGlobal, setPreviewUrlGlobal] = useState<string | null>(null)
   const [subiendoFoto, setSubiendoFoto] = useState<string | null>(null)
 
+  // NUEVO: Estado para guardar lo que el técnico escribe
+  const [accionesTomadas, setAccionesTomadas] = useState("")
+
   // ESTADOS PARA EL CRONÓMETRO
   const [tiempoVivo, setTiempoVivo] = useState("00:00:00")
 
@@ -41,6 +43,8 @@ export default function DetalleOrdenPage() {
       if (dataOrden) {
         setOrden(dataOrden)
         if (dataOrden.evidencia_url) setPreviewUrlGlobal(dataOrden.evidencia_url)
+        // NUEVO: Si la orden ya estaba cerrada y tenía comentarios, los cargamos
+        if (dataOrden.acciones_tomadas) setAccionesTomadas(dataOrden.acciones_tomadas)
       }
 
       const { data: dataTareas } = await supabase.from("checklist_tareas").select("*").eq("orden_id", id).order("id", { ascending: true })
@@ -58,17 +62,13 @@ export default function DetalleOrdenPage() {
   useEffect(() => {
     let intervalo: NodeJS.Timeout;
 
-    // Función que obliga a interpretar el tiempo correctamente
     const parsearHoraSegura = (fechaString: string) => {
       if (!fechaString) return 0;
       let segura = fechaString;
-      // Si Supabase nos regresó la fecha sin la "Z" (indicador de UTC), se la pegamos 
-      // para evitar que el navegador crea que es hora local del futuro.
       if (!segura.endsWith('Z') && !segura.includes('+') && segura.length > 10) {
         segura += 'Z';
       }
       let ms = new Date(segura).getTime();
-      // Si la BD guardó solo "14:30:00" (formato time), lo parchamos
       if (isNaN(ms)) ms = new Date(`1970-01-01T${fechaString}Z`).getTime();
       return isNaN(ms) ? 0 : ms;
     }
@@ -82,12 +82,11 @@ export default function DetalleOrdenPage() {
           const fin = parsearHoraSegura(orden.hora_fin);
           let diff = fin - inicio;
           
-          // Si por error de la BD dio negativo o muy rápido, asignamos mínimo 1 minuto para los KPIs
           if (diff <= 0) diff = 60000; 
           
           setTiempoVivo(formatearMilisegundos(diff));
         } else {
-          setTiempoVivo("00:30:00"); // Tiempo de gracia si no se registraron horas
+          setTiempoVivo("00:30:00");
         }
       } else if (orden.estatus === 'En Progreso') {
         if (orden.hora_inicio) {
@@ -95,7 +94,6 @@ export default function DetalleOrdenPage() {
           const ahora = new Date().getTime();
           let diff = ahora - inicio;
           
-          // Compensación en vivo
           if (diff < 0) diff = 1000; 
           
           setTiempoVivo(formatearMilisegundos(diff));
@@ -107,7 +105,7 @@ export default function DetalleOrdenPage() {
       }
     };
 
-    actualizarReloj(); // Llamada inicial
+    actualizarReloj(); 
     if (orden?.estatus === 'En Progreso') {
       intervalo = setInterval(actualizarReloj, 1000);
     }
@@ -124,7 +122,6 @@ export default function DetalleOrdenPage() {
     return `${h}:${m}:${s}`;
   }
 
-  // ACCIÓN: INICIAR TRABAJO
   async function iniciarTrabajo() {
     const horaArranque = new Date().toISOString();
     setOrden({ ...orden, estatus: 'En Progreso', hora_inicio: horaArranque });
@@ -137,13 +134,21 @@ export default function DetalleOrdenPage() {
     if (error) alert("Error starting: " + error.message);
   }
 
-  // ACCIÓN: FINALIZAR ORDEN 
   async function cerrarOrden() {
     const tareasPendientes = tareas.filter(t => !t.completada)
     if (tareasPendientes.length > 0) {
       alert(`⚠️ There are ${tareasPendientes.length} pending tasks in the checklist.`)
       return
     }
+
+    // NUEVO: Validación estricta si no hay checklist
+    if (tareas.length === 0 && accionesTomadas.trim() === "") {
+      alert("⚠️ You must describe the actions taken to close this work order.");
+      // Hacemos scroll suave hacia la caja de texto para que el técnico la vea
+      document.getElementById('caja-comentarios')?.scrollIntoView({ behavior: 'smooth' });
+      return;
+    }
+
     setGuardando(true)
 
     let urlEvidenciaGlobal = previewUrlGlobal; 
@@ -171,11 +176,13 @@ export default function DetalleOrdenPage() {
       horaArranqueSegura = new Date(Date.now() - 30 * 60000).toISOString();
     }
 
+    // NUEVO: Mandamos el texto de las acciones tomadas a la base de datos
     const datosActualizar = { 
       estatus: 'Cerrada', 
       evidencia_url: urlEvidenciaGlobal,
       hora_inicio: horaArranqueSegura, 
-      hora_fin: horaCierre
+      hora_fin: horaCierre,
+      acciones_tomadas: accionesTomadas 
     };
 
     const { error } = await supabase.from("ordenes_trabajo").update(datosActualizar).eq("id", id);
@@ -370,6 +377,21 @@ export default function DetalleOrdenPage() {
             </div>
           </div>
         )}
+
+        {/* NUEVO: CAJA DE ACCIONES TOMADAS / COMENTARIOS */}
+        <div id="caja-comentarios" className="bg-[#0B1221] border border-slate-800 p-8 rounded-3xl">
+          <h3 className="text-white font-black text-lg mb-4 flex items-center gap-3">
+            <svg className="w-5 h-5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+            {tareas.length > 0 ? "Additional Comments (Optional)" : "Actions Taken (Required)"}
+          </h3>
+          <textarea
+            value={accionesTomadas}
+            onChange={(e) => setAccionesTomadas(e.target.value)}
+            disabled={estaCerrada}
+            placeholder={tareas.length > 0 ? "Any extra details about the work done..." : "Describe the actions taken to resolve this work order..."}
+            className="w-full bg-[#070B14] border border-slate-700 text-slate-200 rounded-xl p-4 focus:border-blue-500 outline-none resize-none min-h-[120px] disabled:opacity-50"
+          ></textarea>
+        </div>
 
         {/* REFACCIONES */}
         {!estaCerrada && (
