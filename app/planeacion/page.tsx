@@ -4,6 +4,7 @@
 import { useState, useEffect } from "react"
 import { supabase } from "@/lib/supabase"
 import Link from "next/link"
+import { Trash2 } from "lucide-react"
 
 export default function PlaneacionPage() {
   const [equipos, setEquipos] = useState<any[]>([])
@@ -11,29 +12,22 @@ export default function PlaneacionPage() {
   const [cargando, setCargando] = useState(true)
   const [generandoId, setGenerandoId] = useState<string | null>(null)
 
-  // Estados del formulario (Internal values kept in Spanish for DB)
+  // ESTADOS 100% EN INGLÉS
   const [equipoId, setEquipoId] = useState("")
   const [tarea, setTarea] = useState("")
-  const [frecuencia, setFrecuencia] = useState("Mensual")
-  const [diaSugerido, setDiaSugerido] = useState("Lunes")
+  const [frecuencia, setFrecuencia] = useState("Monthly")
+  const [diaSugerido, setDiaSugerido] = useState("Monday")
 
-  // Visual dictionaries for rendering English text
-  const freqMap: Record<string, string> = {
-    'Semanal': 'Weekly',
-    'Mensual': 'Monthly',
-    'Trimestral': 'Quarterly',
-    'Semestral': 'Biannual',
-    'Anual': 'Annual'
-  }
-
-  const dayMap: Record<string, string> = {
-    'Lunes': 'Monday',
-    'Martes': 'Tuesday',
-    'Miércoles': 'Wednesday',
-    'Jueves': 'Thursday',
-    'Viernes': 'Friday',
-    'Sábado': 'Saturday',
-    'Domingo': 'Sunday'
+  // Traductor de emergencia para los datos viejos en Spanglish (para que no se rompa mientras los borras)
+  const limpiarTextoAntiguo = (texto: string) => {
+    if (!texto) return "Unassigned";
+    const mapa = {
+      'semanal': 'Weekly', 'quincenal': 'Bi-weekly', 'mensual': 'Monthly', 
+      'trimestral': 'Quarterly', 'semestral': 'Biannual', 'anual': 'Annual',
+      'lunes': 'Monday', 'martes': 'Tuesday', 'miércoles': 'Wednesday', 
+      'jueves': 'Thursday', 'viernes': 'Friday', 'sábado': 'Saturday', 'domingo': 'Sunday'
+    };
+    return mapa[texto.toLowerCase()] || texto;
   }
 
   useEffect(() => {
@@ -50,12 +44,18 @@ export default function PlaneacionPage() {
     setCargando(false)
   }
 
+  // GUARDAR PLAN 100% EN INGLÉS
   async function guardarPlan(e: React.FormEvent) {
     e.preventDefault()
     if (!equipoId || !tarea) return alert("Please fill in all required fields")
 
     const { error } = await supabase.from("plan_maestro").insert([
-      { equipo_id: equipoId, Tarea: tarea, Frecuencia: frecuencia, dia_semana: diaSugerido }
+      { 
+        equipo_id: equipoId, 
+        Tarea: tarea, 
+        Frecuencia: frecuencia, // Ahora guarda "Monthly", "Weekly", etc.
+        dia_semana: diaSugerido // Ahora guarda "Monday", "Tuesday", etc.
+      }
     ])
 
     if (error) {
@@ -66,43 +66,50 @@ export default function PlaneacionPage() {
     }
   }
 
-// FUNCIÓN BLINDADA PARA UUID MULTI-EMPRESA
+  // ELIMINAR PLAN MAESTRO
+  const borrarPlan = async (id: string) => {
+    if (!window.confirm("Are you sure you want to delete this master plan?")) return;
+    try {
+      const { error } = await supabase.from('plan_maestro').delete().eq('id', id);
+      if (error) throw error;
+      setPlanes(planes.filter(p => p.id !== id));
+    } catch (error: any) {
+      alert("Error deleting plan: " + error.message);
+    }
+  };
+
+  // GENERAR ORDEN DE TRABAJO
   async function generarOTManual(plan: any) {
     setGenerandoId(plan.id)
     
     try {
-      // 1. Primero averiguamos a qué empresa pertenece este equipo
-      const { data: equipo } = await supabase
-        .from("equipos")
-        .select("empresa_id")
-        .eq("id", plan.equipo_id)
-        .single()
-      
+      const { data: equipo } = await supabase.from("equipos").select("empresa_id").eq("id", plan.equipo_id).single()
       let empresaIdValido = equipo?.empresa_id;
 
-      // 2. Si el equipo NO tiene empresa asignada, buscamos el UUID de tu primera empresa real
       if (!empresaIdValido) {
         const { data: empresaFallback } = await supabase.from("empresas").select("id").limit(1).single();
         empresaIdValido = empresaFallback?.id;
       }
 
-      // Si de plano no hay ninguna empresa en la base de datos, frenamos aquí
       if (!empresaIdValido) {
-         alert("❌ Error: You don't have any company created in your 'empresas' Supabase table.");
+         alert("❌ Error: No company found in the database.");
          setGenerandoId(null);
          return;
       }
+
+      // Zona Horaria forzada a la madrugada
+      const fechaMadrugada = new Date();
+      fechaMadrugada.setHours(3, 0, 0, 0); 
       
-      // 3. Armamos la orden inyectando el empresa_id correcto (UUID real)
       const nuevaOrden = {
         equipo_id: plan.equipo_id,
         empresa_id: empresaIdValido,
-        tipo_mantenimiento: 'Preventivo',
+        tipo_mantenimiento: 'Preventivo', // El backend lo requiere así para diferenciar
         descripcion_falla: `Maintenance per plan: ${plan.Tarea}`,
-        estatus: 'Abierta'
+        estatus: 'Open', // Estatus nativo en inglés
+        creado_at: fechaMadrugada.toISOString()
       }
 
-      // 4. La mandamos a Supabase
       const { error } = await supabase.from("ordenes_trabajo").insert([nuevaOrden])
       
       if (error) {
@@ -157,22 +164,24 @@ export default function PlaneacionPage() {
             <div>
               <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Frequency</label>
               <select value={frecuencia} onChange={(e) => setFrecuencia(e.target.value)} className="w-full bg-[#070B14] border border-slate-700 p-4 rounded-xl text-white focus:border-indigo-500 outline-none cursor-pointer">
-                <option value="Semanal" className="bg-slate-900">Weekly</option>
-                <option value="Mensual" className="bg-slate-900">Monthly</option>
-                <option value="Trimestral" className="bg-slate-900">Quarterly</option>
-                <option value="Semestral" className="bg-slate-900">Biannual</option>
-                <option value="Anual" className="bg-slate-900">Annual</option>
+                <option value="Weekly" className="bg-slate-900">Weekly</option>
+                <option value="Bi-weekly" className="bg-slate-900">Bi-weekly (Quincenal)</option>
+                <option value="Monthly" className="bg-slate-900">Monthly</option>
+                <option value="Quarterly" className="bg-slate-900">Quarterly</option>
+                <option value="Biannual" className="bg-slate-900">Biannual</option>
+                <option value="Annual" className="bg-slate-900">Annual</option>
               </select>
             </div>
             <div>
               <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Suggested Day</label>
               <select value={diaSugerido} onChange={(e) => setDiaSugerido(e.target.value)} className="w-full bg-[#070B14] border border-slate-700 p-4 rounded-xl text-white focus:border-indigo-500 outline-none cursor-pointer">
-                <option value="Lunes" className="bg-slate-900">Monday</option>
-                <option value="Martes" className="bg-slate-900">Tuesday</option>
-                <option value="Miércoles" className="bg-slate-900">Wednesday</option>
-                <option value="Jueves" className="bg-slate-900">Thursday</option>
-                <option value="Viernes" className="bg-slate-900">Friday</option>
-                <option value="Sábado" className="bg-slate-900">Saturday</option>
+                <option value="Monday" className="bg-slate-900">Monday</option>
+                <option value="Tuesday" className="bg-slate-900">Tuesday</option>
+                <option value="Wednesday" className="bg-slate-900">Wednesday</option>
+                <option value="Thursday" className="bg-slate-900">Thursday</option>
+                <option value="Friday" className="bg-slate-900">Friday</option>
+                <option value="Saturday" className="bg-slate-900">Saturday</option>
+                <option value="Sunday" className="bg-slate-900">Sunday</option>
               </select>
             </div>
           </div>
@@ -191,7 +200,7 @@ export default function PlaneacionPage() {
                 <th className="px-8 py-5">Equipment / Asset</th>
                 <th className="px-6 py-5">Scheduled Task</th>
                 <th className="px-6 py-5 text-center">Frequency</th>
-                <th className="px-8 py-5 text-right">Action</th>
+                <th className="px-8 py-5 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/50 text-slate-300">
@@ -200,23 +209,36 @@ export default function PlaneacionPage() {
               ) : planes.map(plan => (
                 <tr key={plan.id} className="hover:bg-white/[0.02] transition-colors group">
                   <td className="px-8 py-5 font-bold text-white text-base truncate max-w-[200px]">{plan.equipos?.nombre || 'Unknown'}</td>
+                  
                   <td className="px-6 py-5 font-medium truncate max-w-[250px]">
                     {plan.Tarea}
-                    <div className="text-xs text-slate-500 mt-1">Day: {dayMap[plan.dia_semana] || plan.dia_semana || 'Unassigned'}</div>
+                    <div className="text-xs text-slate-500 mt-1">Day: {limpiarTextoAntiguo(plan.dia_semana)}</div>
                   </td>
+                  
                   <td className="px-6 py-5 text-center">
                     <span className="bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest">
-                      {freqMap[plan.Frecuencia] || plan.Frecuencia}
+                      {limpiarTextoAntiguo(plan.Frecuencia)}
                     </span>
                   </td>
+                  
                   <td className="px-8 py-5 text-right">
-                    <button 
-                      onClick={() => generarOTManual(plan)} 
-                      disabled={generandoId === plan.id}
-                      className="bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-slate-950 border border-emerald-500/30 px-5 py-2.5 rounded-lg text-xs font-bold transition-all disabled:opacity-50"
-                    >
-                      {generandoId === plan.id ? 'Generating...' : 'Generate Manual WO'}
-                    </button>
+                    <div className="flex items-center justify-end gap-3">
+                      <button 
+                        onClick={() => generarOTManual(plan)} 
+                        disabled={generandoId === plan.id}
+                        className="bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-slate-950 border border-emerald-500/30 px-5 py-2.5 rounded-lg text-xs font-bold transition-all disabled:opacity-50"
+                      >
+                        {generandoId === plan.id ? 'Generating...' : 'Generate Manual WO'}
+                      </button>
+
+                      <button 
+                        onClick={() => borrarPlan(plan.id)}
+                        className="text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 p-2.5 rounded-lg transition-colors border border-transparent hover:border-rose-500/30"
+                        title="Delete Plan"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

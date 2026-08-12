@@ -11,14 +11,13 @@ export default function GanttPage() {
   const [ordenes, setOrdenes] = useState<any[]>([])
   const [cargando, setCargando] = useState(true)
 
-  // Estructura de 52 semanas agrupadas por mes (Translated)
   const mesesAnio = [
     { nombre: 'Jan', semanas: [1, 2, 3, 4] },
     { nombre: 'Feb', semanas: [5, 6, 7, 8] },
     { nombre: 'Mar', semanas: [9, 10, 11, 12, 13] },
     { nombre: 'Apr', semanas: [14, 15, 16, 17] },
     { nombre: 'May', semanas: [18, 19, 20, 21, 22] },
-    { nombre: 'Jun', semanas: [23, 24, 25, 26] },
+    { nombre: 'Jun', arraySemanas: [23, 24, 25, 26] }, // Alias interno para mapeo
     { nombre: 'Jul', semanas: [27, 28, 29, 30] },
     { nombre: 'Aug', semanas: [31, 32, 33, 34, 35] },
     { nombre: 'Sep', semanas: [36, 37, 38, 39] },
@@ -27,23 +26,31 @@ export default function GanttPage() {
     { nombre: 'Dec', semanas: [49, 50, 51, 52] }
   ]
 
-  // Función matemática para saber qué número de semana del año es una fecha
+  // Fix rápido para el alias de Junio
+  mesesAnio[5].semanas = [23, 24, 25, 26];
+
+  // FUNCIÓN BLINDADA CONTRA FECHAS
   const getNumeroSemana = (fechaStr: string) => {
-    const date = new Date(fechaStr);
-    date.setUTCDate(date.getUTCDate() + 4 - (date.getUTCDay() || 7));
-    const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
-    return Math.ceil((((date.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+    if (!fechaStr) return -1; 
+    try {
+      const date = new Date(fechaStr);
+      if (isNaN(date.getTime())) return -1;
+      date.setUTCDate(date.getUTCDate() + 4 - (date.getUTCDay() || 7));
+      const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+      return Math.ceil((((date.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+    } catch (e) {
+      return -1;
+    }
   }
 
   const semanaActual = getNumeroSemana(new Date().toISOString());
 
   useEffect(() => {
     async function cargarCronograma() {
-      // 1. Traemos los planes maestros (Keep Spanish query)
       const { data: dataPlanes } = await supabase.from("plan_maestro").select("*, equipos(nombre)").order("equipo_id", { ascending: true })
       if (dataPlanes) setPlanes(dataPlanes)
 
-      // 2. Traemos TODAS las órdenes preventivas para ver cuáles ya se hicieron (Keep Spanish query)
+      // Filtramos por Preventivo (que es la palabra clave en tu base de datos para este módulo)
       const { data: dataOrdenes } = await supabase.from("ordenes_trabajo").select("id, equipo_id, estatus, creado_at, descripcion_falla").eq("tipo_mantenimiento", "Preventivo")
       if (dataOrdenes) setOrdenes(dataOrdenes)
       
@@ -52,27 +59,17 @@ export default function GanttPage() {
     cargarCronograma()
   }, [])
 
-  // Lógica de programación (Keep Spanish logic for DB match)
+  // 👇 AHORA ENTIENDE INGLÉS NATIVO 👇
   const checarSiEsProgramado = (frecuencia: string, semana: number) => {
-    const f = frecuencia?.toLowerCase() || 'mensual'
-    if (f === 'semanal') return true;
+    const f = frecuencia?.toLowerCase() || 'monthly'
+    if (f === 'weekly') return true;
+    if (f === 'bi-weekly') return semana % 2 !== 0; // Semanas impares (1, 3, 5...)
     const semanasMes = [1, 5, 9, 14, 18, 23, 27, 31, 36, 40, 45, 49]; 
-    if (f === 'mensual') return semanasMes.includes(semana);
-    if (f === 'trimestral') return [1, 14, 27, 40].includes(semana);
-    if (f === 'semestral') return [1, 27].includes(semana);
-    if (f === 'anual') return semana === 1;
+    if (f === 'monthly') return semanasMes.includes(semana);
+    if (f === 'quarterly') return [1, 14, 27, 40].includes(semana);
+    if (f === 'biannual') return [1, 27].includes(semana);
+    if (f === 'annual') return semana === 1;
     return false;
-  }
-
-  // Visual translation function for the frequency badge
-  const traducirFrecuencia = (frecuencia: string) => {
-    const f = frecuencia?.toLowerCase();
-    if (f === 'semanal') return 'Weekly';
-    if (f === 'mensual') return 'Monthly';
-    if (f === 'trimestral') return 'Quarterly';
-    if (f === 'semestral') return 'Biannual';
-    if (f === 'anual') return 'Annual';
-    return frecuencia;
   }
 
   if (cargando) return <div className="p-8 text-emerald-400 font-bold animate-pulse text-center mt-20">Analyzing annual maintenance schedule...</div>
@@ -92,21 +89,17 @@ export default function GanttPage() {
           </div>
         </div>
 
-        {/* LEYENDA DE COLORES */}
         <div className="flex gap-4 bg-[#0B1221] border border-slate-800 p-3 rounded-xl text-xs font-bold text-slate-300 shadow-xl">
           <div className="flex items-center gap-2"><div className="w-3 h-3 bg-emerald-500 rounded-sm"></div> Completed</div>
           <div className="flex items-center gap-2"><div className="w-3 h-3 bg-amber-500 rounded-sm animate-pulse"></div> In Progress</div>
-          <div className="flex items-center gap-2"><div className="w-3 h-3 bg-slate-800 border border-slate-600 rounded-sm"></div> Scheduled</div>
+          <div className="flex items-center gap-2"><div className="w-3 h-3 bg-slate-800 border border-slate-600 border-dashed rounded-sm"></div> Scheduled</div>
         </div>
       </div>
 
-      {/* CONTENEDOR DEL GANTT */}
       <div className="bg-[#0B1221] border border-slate-800 rounded-3xl shadow-2xl overflow-hidden relative">
-        
         <div className="overflow-x-auto relative z-10 custom-scrollbar">
           <table className="w-full text-sm text-left whitespace-nowrap">
             
-            {/* CABECERA TIER 1: MESES */}
             <thead className="bg-slate-900/80 text-slate-400 uppercase text-[10px] font-black tracking-widest border-b border-slate-800">
               <tr>
                 <th className="px-6 py-4 sticky left-0 bg-[#0B1221] z-30 w-72 shadow-[4px_0_15px_rgba(0,0,0,0.5)] border-r border-slate-800">
@@ -120,7 +113,6 @@ export default function GanttPage() {
               </tr>
             </thead>
 
-            {/* CABECERA TIER 2: NÚMEROS DE SEMANAS */}
             <thead className="bg-slate-900/40 text-slate-500 text-[10px] font-bold border-b border-slate-800">
               <tr>
                 <th className="px-6 py-2.5 sticky left-0 bg-[#0B1221] z-30 shadow-[4px_0_15px_rgba(0,0,0,0.5)] border-r border-slate-800 text-xs text-slate-400">
@@ -136,7 +128,6 @@ export default function GanttPage() {
               </tr>
             </thead>
             
-            {/* CUERPO DEL GANTT */}
             <tbody className="divide-y divide-slate-800/50 text-slate-300">
               {planes.length === 0 ? (
                 <tr><td colSpan={53} className="px-8 py-12 text-center text-slate-500 italic">No master plans registered.</td></tr>
@@ -144,29 +135,29 @@ export default function GanttPage() {
                 planes.map((plan) => (
                   <tr key={plan.id} className="hover:bg-white/[0.02] transition-colors group">
                     
-                    {/* COLUMNA FIJA: NOMBRE DEL EQUIPO */}
                     <td className="px-6 py-4 sticky left-0 bg-[#0B1221] group-hover:bg-[#0D1526] transition-colors z-20 shadow-[4px_0_15px_rgba(0,0,0,0.4)] border-r border-slate-800">
                       <div className="font-bold text-white text-sm truncate w-64">{plan.equipos?.nombre || "No equipment"}</div>
                       <div className="flex justify-between items-center mt-1">
                         <span className="text-xs text-slate-400 truncate w-40">{plan.Tarea}</span>
                         <span className="text-[9px] font-black uppercase tracking-wider text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/30">
-                          {traducirFrecuencia(plan.Frecuencia)}
+                          {plan.Frecuencia}
                         </span>
                       </div>
                     </td>
 
-                    {/* COLUMNAS DE SEMANAS */}
                     {mesesAnio.map((mes) => (
                       mes.semanas.map(semana => {
                         const esProgramado = checarSiEsProgramado(plan.Frecuencia, semana);
                         
-                        // Buscamos si existe una OT para este equipo y tarea creada en esta semana específica
                         const otDeLaSemana = ordenes.find(o => {
                           const isSameEquipo = o.equipo_id === plan.equipo_id;
-                          const isSameTask = o.descripcion_falla && o.descripcion_falla.includes(plan.Tarea);
+                          const isSameTask = o.descripcion_falla && plan.Tarea && o.descripcion_falla.toLowerCase().includes(plan.Tarea.toLowerCase());
                           const isSameWeek = getNumeroSemana(o.creado_at) === semana;
                           return isSameEquipo && isSameTask && isSameWeek;
                         });
+
+                        // Iniciales del día en inglés (MO, TU, WE...)
+                        const diaCorto = plan.dia_semana ? plan.dia_semana.substring(0, 2).toUpperCase() : '';
 
                         return (
                           <td key={semana} className={`p-1.5 border-l border-slate-800/50 relative ${semana === semanaActual ? 'bg-indigo-500/10' : ''}`}>
@@ -174,17 +165,19 @@ export default function GanttPage() {
                             {otDeLaSemana ? (
                               <div 
                                 onClick={() => router.push(`/ordenes/${otDeLaSemana.id}`)}
-                                title={`View Report: ${otDeLaSemana.estatus === 'Cerrada' ? 'Closed' : 'Open'}`}
+                                title={`View Report: ${otDeLaSemana.estatus === 'Closed' || otDeLaSemana.estatus === 'Cerrada' ? 'Closed' : 'Open'}`}
                                 className={`w-full h-8 rounded-lg shadow-md relative z-10 flex items-center justify-center cursor-pointer transition-transform hover:scale-125 border ${
-                                  otDeLaSemana.estatus === 'Cerrada' 
+                                  otDeLaSemana.estatus === 'Closed' || otDeLaSemana.estatus === 'Cerrada'
                                     ? 'bg-emerald-600 border-emerald-400/50 shadow-emerald-900/40 text-white' 
                                     : 'bg-amber-600 border-amber-400/50 shadow-amber-900/40 animate-pulse text-white'
                                 }`}
                               >
-                                {otDeLaSemana.estatus === 'Cerrada' && <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
+                                {(otDeLaSemana.estatus === 'Closed' || otDeLaSemana.estatus === 'Cerrada') && <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
                               </div>
                             ) : esProgramado ? (
-                              <div className="w-full h-8 border border-slate-700 border-dashed bg-slate-900/50 rounded-lg relative z-10" title="Scheduled Maintenance"></div>
+                              <div className="w-full h-8 border border-slate-700 border-dashed bg-slate-900/50 rounded-lg relative z-10 flex items-center justify-center text-[9px] font-bold text-slate-500" title={`Scheduled for ${plan.dia_semana}`}>
+                                {diaCorto}
+                              </div>
                             ) : null}
                           </td>
                         )

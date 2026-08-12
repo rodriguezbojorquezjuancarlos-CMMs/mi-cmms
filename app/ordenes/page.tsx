@@ -23,6 +23,22 @@ export default function OrdenesPage() {
     cargarOrdenes()
   }, [])
 
+  // 👇 NUEVA FUNCIÓN: BORRAR ORDEN 👇
+  const borrarOrden = async (id: string) => {
+    // Confirmación de seguridad
+    if (!window.confirm("Are you sure you want to delete this work order? This action cannot be undone.")) return;
+    
+    try {
+      const { error } = await supabase.from('ordenes_trabajo').delete().eq('id', id);
+      if (error) throw error;
+      
+      // Actualizamos la tabla en pantalla quitando la que acabamos de borrar sin recargar la página
+      setOrdenes(ordenes.filter(o => o.id !== id));
+    } catch (error: any) {
+      alert("Error deleting work order: " + error.message);
+    }
+  };
+
   // Filtrado en tiempo real (Logic remains in Spanish for DB match)
   const ordenesFiltradas = ordenes.filter(orden => {
     if (filtro === 'preventivo') return orden.tipo_mantenimiento === 'Preventivo';
@@ -63,7 +79,7 @@ export default function OrdenesPage() {
       {/* PANEL DE CONTROL / LISTA DE ÓRDENES */}
       <div className="bg-[#0B1121] border border-slate-800 rounded-3xl shadow-2xl overflow-hidden">
         
-        {/* Pestañas visuales de filtrado (AHORA FUNCIONALES) */}
+        {/* Pestañas visuales de filtrado */}
         <div className="flex gap-6 px-8 py-5 border-b border-slate-800 text-sm font-bold text-slate-400">
           <button onClick={() => setFiltro('todas')} className={`pb-1 transition-colors ${filtro === 'todas' ? 'text-emerald-400 border-b-2 border-emerald-400' : 'hover:text-white'}`}>All Orders</button>
           <button onClick={() => setFiltro('preventivo')} className={`pb-1 transition-colors ${filtro === 'preventivo' ? 'text-emerald-400 border-b-2 border-emerald-400' : 'hover:text-white'}`}>Preventive</button>
@@ -80,7 +96,7 @@ export default function OrdenesPage() {
                 <th className="px-6 py-4">Ticket Type</th>
                 <th className="px-6 py-4">Fault / Activity to perform</th>
                 <th className="px-6 py-4">Current Status</th>
-                <th className="px-8 py-4 text-right">Execution</th>
+                <th className="px-8 py-4 text-right">Execution & Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/50 text-slate-300">
@@ -131,9 +147,22 @@ export default function OrdenesPage() {
                          </span>
                       </td>
                       <td className="px-8 py-5 text-right">
-                        <Link href={`/ordenes/${orden.id}`} className="inline-flex items-center gap-2 bg-slate-800 hover:bg-emerald-600 text-slate-300 hover:text-white border border-slate-700 hover:border-emerald-500 px-5 py-2.5 rounded-lg text-xs font-bold transition-all group-hover:shadow-[0_0_15px_rgba(16,185,129,0.3)]">
-                          View Details
-                        </Link>
+                        <div className="flex items-center justify-end gap-3">
+                          <Link href={`/ordenes/${orden.id}`} className="inline-flex items-center gap-2 bg-slate-800 hover:bg-emerald-600 text-slate-300 hover:text-white border border-slate-700 hover:border-emerald-500 px-5 py-2.5 rounded-lg text-xs font-bold transition-all group-hover:shadow-[0_0_15px_rgba(16,185,129,0.3)]">
+                            View Details
+                          </Link>
+                          
+                          {/* 👇 BOTÓN DE ELIMINAR 👇 */}
+                          <button 
+                            onClick={() => borrarOrden(orden.id)}
+                            className="text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 p-2.5 rounded-lg transition-colors border border-transparent hover:border-rose-500/30"
+                            title="Delete Work Order"
+                          >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   )
