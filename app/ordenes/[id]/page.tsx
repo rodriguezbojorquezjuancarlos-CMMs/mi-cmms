@@ -23,13 +23,9 @@ export default function DetalleOrdenPage() {
   const [previewUrlGlobal, setPreviewUrlGlobal] = useState<string | null>(null)
   const [subiendoFoto, setSubiendoFoto] = useState<string | null>(null)
 
-  // NUEVO: Estado para guardar lo que el técnico escribe
   const [accionesTomadas, setAccionesTomadas] = useState("")
-
-  // ESTADOS PARA EL CRONÓMETRO
   const [tiempoVivo, setTiempoVivo] = useState("00:00:00")
 
-  // Visual status mapper
   const statusMap: Record<string, string> = {
     'Abierta': 'Open',
     'Pendiente': 'Pending',
@@ -43,7 +39,6 @@ export default function DetalleOrdenPage() {
       if (dataOrden) {
         setOrden(dataOrden)
         if (dataOrden.evidencia_url) setPreviewUrlGlobal(dataOrden.evidencia_url)
-        // NUEVO: Si la orden ya estaba cerrada y tenía comentarios, los cargamos
         if (dataOrden.acciones_tomadas) setAccionesTomadas(dataOrden.acciones_tomadas)
       }
 
@@ -58,7 +53,6 @@ export default function DetalleOrdenPage() {
     if (id) cargarDetalle()
   }, [id])
 
-  // LÓGICA DEL CRONÓMETRO CON PARCHE DE ZONA HORARIA
   useEffect(() => {
     let intervalo: NodeJS.Timeout;
 
@@ -81,9 +75,7 @@ export default function DetalleOrdenPage() {
           const inicio = parsearHoraSegura(orden.hora_inicio);
           const fin = parsearHoraSegura(orden.hora_fin);
           let diff = fin - inicio;
-          
           if (diff <= 0) diff = 60000; 
-          
           setTiempoVivo(formatearMilisegundos(diff));
         } else {
           setTiempoVivo("00:30:00");
@@ -93,9 +85,7 @@ export default function DetalleOrdenPage() {
           const inicio = parsearHoraSegura(orden.hora_inicio);
           const ahora = new Date().getTime();
           let diff = ahora - inicio;
-          
           if (diff < 0) diff = 1000; 
-          
           setTiempoVivo(formatearMilisegundos(diff));
         } else {
           setTiempoVivo("00:00:00");
@@ -141,10 +131,8 @@ export default function DetalleOrdenPage() {
       return
     }
 
-    // NUEVO: Validación estricta si no hay checklist
     if (tareas.length === 0 && accionesTomadas.trim() === "") {
       alert("⚠️ You must describe the actions taken to close this work order.");
-      // Hacemos scroll suave hacia la caja de texto para que el técnico la vea
       document.getElementById('caja-comentarios')?.scrollIntoView({ behavior: 'smooth' });
       return;
     }
@@ -162,6 +150,10 @@ export default function DetalleOrdenPage() {
       }
     }
 
+    const listaMaterialesImprimible = piezasUsadas.length > 0 
+      ? piezasUsadas.map(p => `${p.cantidad}x ${p.nombre}`).join(', ')
+      : "";
+
     for (const pieza of piezasUsadas) {
       const refOriginal = inventario.find(r => r.id === pieza.id);
       if (refOriginal) {
@@ -176,13 +168,13 @@ export default function DetalleOrdenPage() {
       horaArranqueSegura = new Date(Date.now() - 30 * 60000).toISOString();
     }
 
-    // NUEVO: Mandamos el texto de las acciones tomadas a la base de datos
     const datosActualizar = { 
       estatus: 'Cerrada', 
       evidencia_url: urlEvidenciaGlobal,
       hora_inicio: horaArranqueSegura, 
       hora_fin: horaCierre,
-      acciones_tomadas: accionesTomadas 
+      acciones_tomadas: accionesTomadas,
+      materiales_utilizados: listaMaterialesImprimible
     };
 
     const { error } = await supabase.from("ordenes_trabajo").update(datosActualizar).eq("id", id);
@@ -291,10 +283,8 @@ export default function DetalleOrdenPage() {
             </div>
           </div>
 
-          {/* PANEL DEL RELOJ */}
           <div className="bg-black/40 border border-slate-800 p-6 rounded-2xl flex flex-col items-center justify-center min-w-[280px]">
             <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mb-2">Labor Time</p>
-            
             <div className="text-5xl font-mono font-black text-white mb-6 drop-shadow-[0_0_15px_rgba(255,255,255,0.2)]">
               {tiempoVivo}
             </div>
@@ -323,10 +313,8 @@ export default function DetalleOrdenPage() {
         </div>
       </div>
 
-      {/* ENVOLTORIO DE DESACTIVACIÓN */}
       <div className={`space-y-6 transition-all duration-500 ${estaAbierta ? 'opacity-40 pointer-events-none grayscale-[50%]' : 'opacity-100'}`}>
         
-        {/* CHECKLIST */}
         {tareas.length > 0 && (
           <div className="bg-[#0B1221] border border-slate-800 p-8 rounded-3xl">
             <h3 className="text-white font-black text-lg mb-6 flex items-center gap-3">
@@ -345,7 +333,6 @@ export default function DetalleOrdenPage() {
                     </p>
                   </div>
                   
-                  {/* Textarea para comentarios / Foto individual */}
                   <div className={`px-4 pb-4 pl-14 transition-all ${estaCerrada && !tarea.comentario && !tarea.foto_url ? 'hidden' : 'block'}`}>
                     <div className="flex flex-col sm:flex-row gap-3">
                       <div className="flex-1">
@@ -378,7 +365,6 @@ export default function DetalleOrdenPage() {
           </div>
         )}
 
-        {/* NUEVO: CAJA DE ACCIONES TOMADAS / COMENTARIOS */}
         <div id="caja-comentarios" className="bg-[#0B1221] border border-slate-800 p-8 rounded-3xl">
           <h3 className="text-white font-black text-lg mb-4 flex items-center gap-3">
             <svg className="w-5 h-5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
@@ -393,35 +379,44 @@ export default function DetalleOrdenPage() {
           ></textarea>
         </div>
 
-        {/* REFACCIONES */}
-        {!estaCerrada && (
-          <div className="bg-[#0B1221] border border-slate-800 p-8 rounded-3xl">
-            <h3 className="text-amber-400 font-bold text-xs uppercase tracking-widest mb-5 flex items-center gap-2">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>
-              Spare Parts Used
-            </h3>
-            <div className="flex flex-col md:flex-row gap-3 mb-6">
-              <select value={piezaSeleccionada} onChange={(e) => setPiezaSeleccionada(e.target.value)} className="flex-1 bg-[#070B14] border border-slate-700 p-4 rounded-xl focus:border-amber-500 outline-none text-slate-200 appearance-none">
-                <option value="">Search in warehouse...</option>
-                {inventario.map(ref => <option key={ref.id} value={ref.id}>{ref.nombre} (Qty: {ref.cantidad})</option>)}
-              </select>
-              <div className="flex gap-3">
-                <input type="number" min="1" value={cantidadUsada} onChange={(e) => setCantidadUsada(e.target.value)} className="w-24 bg-[#070B14] border border-slate-700 p-4 rounded-xl text-center focus:border-amber-500 outline-none text-slate-200 font-bold" />
-                <button type="button" onClick={agregarPiezaLocal} className="bg-amber-500/10 text-amber-500 border border-amber-500/30 px-6 rounded-xl hover:bg-amber-500/20 transition-colors font-black text-xl">+</button>
-              </div>
+        {/* 👇 REFACCIONES (LECTURA O EDICIÓN) 👇 */}
+        <div className="bg-[#0B1221] border border-slate-800 p-8 rounded-3xl">
+          <h3 className="text-amber-400 font-bold text-xs uppercase tracking-widest mb-5 flex items-center gap-2">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>
+            Spare Parts Used
+          </h3>
+          
+          {estaCerrada ? (
+            /* MODO LECTURA PARA ORDEN CERRADA */
+            <div className="bg-slate-900/50 border border-slate-800 p-4 rounded-xl text-slate-300 text-sm whitespace-pre-wrap">
+              {orden?.materiales_utilizados || "No spare parts were recorded during execution."}
             </div>
-            {piezasUsadas.length > 0 && (
-              <div className="space-y-2">
-                {piezasUsadas.map(pieza => (
-                  <div key={pieza.id} className="flex items-center justify-between bg-slate-900/50 border border-slate-800 p-4 rounded-xl">
-                    <span className="text-slate-300 font-medium text-sm"><span className="text-amber-500 font-bold mr-2">{pieza.cantidad}x</span> {pieza.nombre}</span>
-                    <button onClick={() => quitarPiezaLocal(pieza.id)} className="text-red-400 hover:text-red-300 p-2"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
-                  </div>
-                ))}
+          ) : (
+            /* MODO INTERACTIVO (EN PROGRESO) */
+            <>
+              <div className="flex flex-col md:flex-row gap-3 mb-6">
+                <select value={piezaSeleccionada} onChange={(e) => setPiezaSeleccionada(e.target.value)} className="flex-1 bg-[#070B14] border border-slate-700 p-4 rounded-xl focus:border-amber-500 outline-none text-slate-200 appearance-none">
+                  <option value="">Search in warehouse...</option>
+                  {inventario.map(ref => <option key={ref.id} value={ref.id}>{ref.nombre} (Qty: {ref.cantidad})</option>)}
+                </select>
+                <div className="flex gap-3">
+                  <input type="number" min="1" value={cantidadUsada} onChange={(e) => setCantidadUsada(e.target.value)} className="w-24 bg-[#070B14] border border-slate-700 p-4 rounded-xl text-center focus:border-amber-500 outline-none text-slate-200 font-bold" />
+                  <button type="button" onClick={agregarPiezaLocal} className="bg-amber-500/10 text-amber-500 border border-amber-500/30 px-6 rounded-xl hover:bg-amber-500/20 transition-colors font-black text-xl">+</button>
+                </div>
               </div>
-            )}
-          </div>
-        )}
+              {piezasUsadas.length > 0 && (
+                <div className="space-y-2">
+                  {piezasUsadas.map(pieza => (
+                    <div key={pieza.id} className="flex items-center justify-between bg-slate-900/50 border border-slate-800 p-4 rounded-xl">
+                      <span className="text-slate-300 font-medium text-sm"><span className="text-amber-500 font-bold mr-2">{pieza.cantidad}x</span> {pieza.nombre}</span>
+                      <button onClick={() => quitarPiezaLocal(pieza.id)} className="text-red-400 hover:text-red-300 p-2"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
 
         {/* EVIDENCIA FOTOGRÁFICA */}
         <div className="bg-[#0B1221] border border-slate-800 p-8 rounded-3xl">
