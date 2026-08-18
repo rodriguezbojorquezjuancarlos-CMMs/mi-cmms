@@ -10,7 +10,7 @@ export default function InventarioPage() {
   const [busqueda, setBusqueda] = useState("")
   const [filtroCategoria, setFiltroCategoria] = useState("Todas")
 
-  // Estados para el Modal de Nueva Pieza (Keys kept in Spanish for DB)
+  // Estados para el Modal de Nueva Pieza
   const [mostrarModal, setMostrarModal] = useState(false)
   const [guardando, setGuardando] = useState(false)
   const [form, setForm] = useState({
@@ -20,8 +20,14 @@ export default function InventarioPage() {
     cantidad: 1,
     stock_minimo: 1,
     costo: 0,
-    unidad_medida: "Pza"
+    unidad_medida: "Pza",
+    maquina_asignada: "General" // 🟢 NUEVO: Para enlazar con el Kiosco
   })
+
+  // NUEVO: Estado para el Historial de Transacciones / Auditoría de Kiosco
+  const [mostrarHistorial, setMostrarHistorial] = useState(false)
+  const [historialConsumos, setHistorialConsumos] = useState<any[]>([])
+  const [cargandoHistorial, setCargandoHistorial] = useState(false)
 
   // Métricas del almacén
   const [metricas, setMetricas] = useState({
@@ -31,7 +37,6 @@ export default function InventarioPage() {
     agotado: 0
   })
 
-  // Dictionaries for visual translation without breaking DB inserts/queries
   const categoryMap: Record<string, string> = {
     'Mecánico': 'Mechanical',
     'Eléctrico': 'Electrical',
@@ -60,7 +65,6 @@ export default function InventarioPage() {
     if (data) {
       setRefacciones(data)
       
-      // Calcular métricas
       let totalPzs = 0;
       let valor = 0;
       let bajo = 0;
@@ -82,6 +86,24 @@ export default function InventarioPage() {
     setCargando(false)
   }
 
+  // Cargar la bitácora de auditoría (Quién usó qué)
+  async function cargarHistorial() {
+    setMostrarHistorial(true)
+    setCargandoHistorial(true)
+    
+    // Consultamos los registros (Si aún no creas la tabla en Supabase, la crearemos abajo)
+    const { data, error } = await supabase
+      .from("historial_consumos")
+      .select("*")
+      .order("fecha", { ascending: false })
+      .limit(50)
+
+    if (data) {
+      setHistorialConsumos(data)
+    }
+    setCargandoHistorial(false)
+  }
+
   async function guardarPieza(e: React.FormEvent) {
     e.preventDefault()
     setGuardando(true)
@@ -93,20 +115,20 @@ export default function InventarioPage() {
       cantidad: form.cantidad,
       stock_minimo: form.stock_minimo,
       costo: form.costo,
-      unidad_medida: form.unidad_medida
+      unidad_medida: form.unidad_medida,
+      maquina_asignada: form.maquina_asignada // 🟢 Guardamos la máquina asignada
     }])
 
     if (error) {
       alert("Error saving: " + error.message)
     } else {
       setMostrarModal(false)
-      setForm({ nombre: "", numero_parte: "", categoria: "Mecánico", cantidad: 1, stock_minimo: 1, costo: 0, unidad_medida: "Pza" })
+      setForm({ nombre: "", numero_parte: "", categoria: "Mecánico", cantidad: 1, stock_minimo: 1, costo: 0, unidad_medida: "Pza", maquina_asignada: "General" })
       cargarInventario()
     }
     setGuardando(false)
   }
 
-  // Filtrado dinámico
   const refaccionesFiltradas = refacciones.filter(ref => {
     const coincideTexto = ref.nombre?.toLowerCase().includes(busqueda.toLowerCase()) || ref.numero_parte?.toLowerCase().includes(busqueda.toLowerCase());
     const coincideCategoria = filtroCategoria === "Todas" || ref.categoria === filtroCategoria;
@@ -128,10 +150,18 @@ export default function InventarioPage() {
           </div>
         </div>
         
-        <button onClick={() => setMostrarModal(true)} className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-6 rounded-xl flex items-center justify-center gap-2 transition-all shadow-[0_0_15px_rgba(37,99,235,0.4)]">
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
-          New Part
-        </button>
+        <div className="flex items-center gap-3">
+          {/* Botón de Auditoría / Historial */}
+          <button onClick={cargarHistorial} className="bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold py-3 px-5 rounded-xl flex items-center justify-center gap-2 transition-all border border-slate-700">
+            <svg className="w-5 h-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+            Usage Log
+          </button>
+
+          <button onClick={() => setMostrarModal(true)} className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-6 rounded-xl flex items-center justify-center gap-2 transition-all shadow-[0_0_15px_rgba(37,99,235,0.4)]">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
+            New Part
+          </button>
+        </div>
       </div>
 
       {/* TIER 1: TARJETAS DE MÉTRICAS */}
@@ -157,7 +187,7 @@ export default function InventarioPage() {
       {/* TIER 2: TABLA PRINCIPAL DE INVENTARIO */}
       <div className="bg-[#0B1121] border border-slate-800 rounded-3xl shadow-2xl overflow-hidden">
         
-        {/* BARRA DE HERRAMIENTAS (Buscador y Filtros) */}
+        {/* BARRA DE HERRAMIENTAS */}
         <div className="p-6 border-b border-slate-800 flex flex-col sm:flex-row gap-4 justify-between items-center bg-slate-900/30">
           <div className="relative w-full sm:w-96">
             <svg className="w-5 h-5 absolute left-4 top-3.5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
@@ -174,8 +204,7 @@ export default function InventarioPage() {
             onChange={(e) => setFiltroCategoria(e.target.value)}
             className="w-full sm:w-auto bg-[#070B14] border border-slate-700 px-6 py-3 rounded-xl text-slate-200 focus:border-blue-500 outline-none appearance-none cursor-pointer font-bold text-sm"
           >
-            {/* The visual values are English, but the internal values remain Spanish for the filter logic */}
-            <option value="Todas">All</option>
+            <option value="Todas">All Categories</option>
             <option value="Mecánico">Mechanical</option>
             <option value="Eléctrico">Electrical</option>
             <option value="Neumático">Pneumatic</option>
@@ -190,8 +219,8 @@ export default function InventarioPage() {
               <tr>
                 <th className="px-8 py-5">Part Number</th>
                 <th className="px-6 py-5">Description</th>
-                <th className="px-6 py-5">Category</th>
-                <th className="px-6 py-5 text-center">Stock</th>
+                <th className="px-6 py-5">Category / Machine</th>
+                <th className="px-6 py-5 text-center">Stock / Min</th>
                 <th className="px-6 py-5 text-center">UOM</th>
                 <th className="px-8 py-5 text-center">Status</th>
               </tr>
@@ -205,11 +234,12 @@ export default function InventarioPage() {
                 refaccionesFiltradas.map(ref => {
                   let estatusTexto = "In Stock";
                   let colorClase = "bg-emerald-500/10 text-emerald-400 border-emerald-500/30";
+                  let stockCritico = ref.cantidad <= ref.stock_minimo;
                   
                   if (ref.cantidad === 0) {
                     estatusTexto = "Out of Stock";
                     colorClase = "bg-red-500/10 text-red-400 border-red-500/30 animate-pulse";
-                  } else if (ref.cantidad <= ref.stock_minimo) {
+                  } else if (stockCritico) {
                     estatusTexto = "Low Stock";
                     colorClase = "bg-amber-500/10 text-amber-400 border-amber-500/30";
                   }
@@ -220,8 +250,21 @@ export default function InventarioPage() {
                         {ref.numero_parte || `SP-${ref.id.toString().substring(0,6).toUpperCase()}`}
                       </td>
                       <td className="px-6 py-5 font-bold text-white max-w-[250px] truncate">{ref.nombre}</td>
-                      <td className="px-6 py-5 text-slate-400">{categoryMap[ref.categoria] || ref.categoria || 'General'}</td>
-                      <td className="px-6 py-5 text-center font-black text-white text-lg">{ref.cantidad}</td>
+                      <td className="px-6 py-5">
+                        <p className="text-slate-300">{categoryMap[ref.categoria] || ref.categoria || 'General'}</p>
+                        <p className="text-[10px] text-blue-400 font-mono mt-0.5">{ref.maquina_asignada || 'General'}</p>
+                      </td>
+                      
+                      {/* 🟢 NUEVA VISTA MIN/MAX EN LA TABLA */}
+                      <td className="px-6 py-5 text-center">
+                        <span className={`text-lg font-black ${ref.cantidad === 0 ? 'text-red-400' : stockCritico ? 'text-amber-400' : 'text-white'}`}>
+                          {ref.cantidad}
+                        </span>
+                        <span className="text-xs text-slate-500 ml-2 font-mono">
+                          (Min: {ref.stock_minimo})
+                        </span>
+                      </td>
+
                       <td className="px-6 py-5 text-center text-slate-500 text-xs font-bold">{uomMap[ref.unidad_medida] || ref.unidad_medida || 'Pcs'}</td>
                       <td className="px-8 py-5 text-center">
                         <span className={`px-3 py-1.5 rounded-md text-[10px] font-black uppercase tracking-widest border ${colorClase}`}>
@@ -236,6 +279,53 @@ export default function InventarioPage() {
           </table>
         </div>
       </div>
+
+      {/* MODAL: HISTORIAL DE CONSUMOS (USO DE KIOSCO) */}
+      {mostrarHistorial && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-300 overflow-y-auto">
+          <div className="bg-[#0B1221] border border-slate-800 p-8 rounded-3xl shadow-2xl max-w-4xl w-full relative my-8">
+            <button onClick={() => setMostrarHistorial(false)} className="absolute top-4 right-4 text-slate-500 hover:text-white transition-colors bg-slate-800 p-2 rounded-full">
+               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+            
+            <h2 className="text-2xl font-black text-white mb-2">Shop Floor Usage Log</h2>
+            <p className="text-slate-400 text-sm mb-6">Audit trail tracking who retrieved parts and consumables from the kiosk.</p>
+            
+            <div className="overflow-x-auto max-h-[60vh] custom-scrollbar border border-slate-800 rounded-2xl">
+              <table className="w-full text-left text-sm whitespace-nowrap">
+                <thead className="bg-slate-900 text-slate-400 text-[10px] uppercase font-black tracking-widest sticky top-0">
+                  <tr>
+                    <th className="p-4">Date / Time</th>
+                    <th className="p-4">Operator</th>
+                    <th className="p-4">Part / Tool</th>
+                    <th className="p-4 text-center">Qty Used</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800 text-slate-300">
+                  {cargandoHistorial ? (
+                    <tr><td colSpan={4} className="p-8 text-center text-blue-400 animate-pulse font-bold">Loading log data...</td></tr>
+                  ) : historialConsumos.length === 0 ? (
+                    <tr><td colSpan={4} className="p-8 text-center text-slate-500">No usage records found yet. Try using a part in the kiosk!</td></tr>
+                  ) : (
+                    historialConsumos.map((log, idx) => (
+                      <tr key={idx} className="hover:bg-slate-900/50">
+                        <td className="p-4 text-slate-400 font-mono text-xs">{new Date(log.fecha).toLocaleString()}</td>
+                        <td className="p-4 font-bold text-white">{log.operador}</td>
+                        <td className="p-4 text-blue-400 font-medium">{log.pieza_nombre}</td>
+                        <td className="p-4 text-center font-black text-emerald-400">-{log.cantidad}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <button onClick={() => setMostrarHistorial(false)} className="w-full mt-6 bg-slate-800 hover:bg-slate-700 text-white py-3 font-bold rounded-xl transition-all">
+              Close Log
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* MODAL: REGISTRAR NUEVA PIEZA */}
       {mostrarModal && (
@@ -265,6 +355,19 @@ export default function InventarioPage() {
                     <option value="Eléctrico" className="bg-slate-900">Electrical</option>
                     <option value="Neumático" className="bg-slate-900">Pneumatic</option>
                     <option value="Consumible" className="bg-slate-900">Consumable</option>
+                  </select>
+                </div>
+
+                {/* 🟢 NUEVO CAMPO: ASIGNAR MÁQUINA DESDE EL INVENTARIO */}
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-bold text-blue-400 uppercase mb-2">Assigned Workstation (Kiosk Filter)</label>
+                  <select value={form.maquina_asignada} onChange={(e) => setForm({...form, maquina_asignada: e.target.value})} className="w-full bg-[#070B14] border border-slate-700 p-4 rounded-xl text-slate-200 focus:border-blue-500 outline-none cursor-pointer">
+                    <option value="General" className="bg-slate-900">General (Available for all machines)</option>
+                    <option value="CNC Router #1" className="bg-slate-900">CNC Router #1 (Weeke)</option>
+                    <option value="CNC Router #2" className="bg-slate-900">CNC Router #2</option>
+                    <option value="CNC Panel Saw" className="bg-slate-900">CNC Panel Saw</option>
+                    <option value="Edge Bander" className="bg-slate-900">Edge Bander</option>
+                    <option value="CNC Dowell Drill" className="bg-slate-900">CNC Dowell Drill</option>
                   </select>
                 </div>
 

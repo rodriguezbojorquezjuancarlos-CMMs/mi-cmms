@@ -74,7 +74,7 @@ export default function SubirGastoAlbanil() {
             <HardHat size={32} />
           </div>
           <h1 className="text-2xl font-black text-white">Reporte de Gasto - Obra</h1>
-          <p className="text-slate-400 text-sm mt-1">Sube tu ticket o nota de compra al sistema de corporativo.</p>
+          <p className="text-slate-400 text-sm mt-1">Registra los gastos y compras de la obra.</p>
         </div>
 
         {exito ? (
@@ -142,7 +142,7 @@ export default function SubirGastoAlbanil() {
               disabled={cargando}
               className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-4 rounded-xl transition-all shadow-[0_0_20px_rgba(16,185,129,0.3)] flex items-center justify-center gap-2 text-base mt-4"
             >
-              {cargando ? "Enviando reporte..." : <><Send size={20} /> ENVIAR TICKET A CORPORATIVO</>}
+              {cargando ? "Guardando gasto..." : <><Send size={20} /> GUARDAR GASTO</>}
             </button>
           </form>
         )}
