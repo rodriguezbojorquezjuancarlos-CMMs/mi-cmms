@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useParams, useRouter } from 'next/navigation';
-import { Printer, Plus, ArrowLeft, Users, DollarSign, Clock, Trash2, X, Loader2, Receipt } from 'lucide-react';
+import { Printer, Plus, ArrowLeft, Users, DollarSign, Clock, Trash2, X, Loader2, Receipt, Pencil } from 'lucide-react';
 
 interface RecordItem {
   id: string;
@@ -14,7 +14,7 @@ interface RecordItem {
   regular_hours: number;
   overtime_hours: number;
   material_cost: number;
-  record_type: 'labor' | 'expense'; // Para diferenciar si es hora o gasto
+  record_type: 'labor' | 'expense';
 }
 
 export default function ProjectDetailPage() {
@@ -24,8 +24,11 @@ export default function ProjectDetailPage() {
 
   const [records, setRecords] = useState<RecordItem[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // Estados para el Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalType, setModalType] = useState<'labor' | 'expense'>('labor');
+  const [editingRecordId, setEditingRecordId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const [formData, setFormData] = useState({
@@ -52,7 +55,6 @@ export default function ProjectDetailPage() {
     if (error) {
       console.error('Error fetching project records:', error);
     } else {
-      // Si la base de datos no tiene la columna record_type, la inferimos por si acaso
       const formatted = (data || []).map((item: any) => ({
         ...item,
         record_type: item.material_cost > 0 && item.regular_hours === 0 && item.overtime_hours === 0 ? 'expense' : 'labor'
@@ -67,8 +69,10 @@ export default function ProjectDetailPage() {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const openModal = (type: 'labor' | 'expense') => {
+  // Abrir Modal para crear uno NUEVO
+  const openModalNew = (type: 'labor' | 'expense') => {
     setModalType(type);
+    setEditingRecordId(null);
     setFormData({
       worker_name: '',
       description: '',
@@ -80,36 +84,56 @@ export default function ProjectDetailPage() {
     setIsModalOpen(true);
   };
 
-  const handleAddRecord = async (e: React.FormEvent) => {
+  // Abrir Modal para EDITAR
+  const openModalEdit = (record: RecordItem, type: 'labor' | 'expense') => {
+    setModalType(type);
+    setEditingRecordId(record.id);
+    setFormData({
+      worker_name: record.worker_name === 'Expense / Material' ? '' : record.worker_name,
+      description: record.description,
+      project_date: record.project_date,
+      regular_hours: record.regular_hours.toString(),
+      overtime_hours: record.overtime_hours.toString(),
+      material_cost: record.material_cost.toString()
+    });
+    setIsModalOpen(true);
+  };
+
+ const handleSaveRecord = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
 
     const isExpense = modalType === 'expense';
+    
+    // Le agregamos ": any" para que TypeScript no marque error con Supabase
+    const payload: any = {
+      project_name: projectName,
+      worker_name: isExpense ? 'Expense / Material' : (formData.worker_name || 'General'),
+      description: formData.description,
+      project_date: formData.project_date,
+      regular_hours: isExpense ? 0 : (Number(formData.regular_hours) || 0),
+      overtime_hours: isExpense ? 0 : (Number(formData.overtime_hours) || 0),
+      material_cost: isExpense ? (Number(formData.material_cost) || 0) : 0,
+      tasks_status: 'In Progress'
+    };
 
-    const { error } = await (supabase.from('project_costs') as any).insert([
-      {
-        project_name: projectName,
-        worker_name: isExpense ? 'Expense / Material' : (formData.worker_name || 'General'),
-        description: formData.description,
-        project_date: formData.project_date,
-        regular_hours: isExpense ? 0 : (Number(formData.regular_hours) || 0),
-        overtime_hours: isExpense ? 0 : (Number(formData.overtime_hours) || 0),
-        material_cost: isExpense ? (Number(formData.material_cost) || 0) : 0,
-        tasks_status: 'In Progress'
-      }
-    ]);
-
-    if (error) {
-      alert('Error: ' + error.message);
+    if (editingRecordId) {
+      // Lógica de ACTUALIZAR (usamos "as any" para evitar alertas de TS)
+      const { error } = await (supabase.from('project_costs') as any).update(payload).eq('id', editingRecordId);
+      if (error) alert('Error updating: ' + error.message);
     } else {
-      setIsModalOpen(false);
-      fetchProjectRecords();
+      // Lógica de INSERTAR
+      const { error } = await (supabase.from('project_costs') as any).insert([payload]);
+      if (error) alert('Error inserting: ' + error.message);
     }
+
+    setIsModalOpen(false);
+    fetchProjectRecords();
     setSubmitting(false);
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Delete this record?')) return;
+    if (!confirm('Are you sure you want to delete this record?')) return;
     await supabase.from('project_costs').delete().eq('id', id);
     fetchProjectRecords();
   };
@@ -118,9 +142,8 @@ export default function ProjectDetailPage() {
     window.print();
   };
 
-  // Separación de listas
   const laborRecords = records.filter(r => r.regular_hours > 0 || r.overtime_hours > 0 || r.worker_name !== 'Expense / Material');
-  const expenseRecords = records.filter(r => r.material_cost > 0);
+  const expenseRecords = records.filter(r => r.material_cost > 0 && r.worker_name === 'Expense / Material');
 
   const totalReg = laborRecords.reduce((acc, curr) => acc + Number(curr.regular_hours), 0);
   const totalOt = laborRecords.reduce((acc, curr) => acc + Number(curr.overtime_hours), 0);
@@ -129,7 +152,6 @@ export default function ProjectDetailPage() {
   return (
     <div className="min-h-screen bg-[#0f172a] p-6 print:p-0 print:bg-white font-sans text-slate-200">
       
-      {/* VISTA OSCURA (APP PANEL) */}
       <div className="print:hidden">
         
         <div className="flex justify-between items-center mb-6 border-b border-slate-800 pb-5">
@@ -148,13 +170,13 @@ export default function ProjectDetailPage() {
           
           <div className="flex gap-3">
             <button 
-              onClick={() => openModal('labor')}
+              onClick={() => openModalNew('labor')}
               className="flex items-center gap-2 px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white font-medium rounded-lg transition-colors border border-sky-500 shadow-lg"
             >
               <Plus size={18} /> Add Worker Hours
             </button>
             <button 
-              onClick={() => openModal('expense')}
+              onClick={() => openModalNew('expense')}
               className="flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white font-medium rounded-lg transition-colors border border-amber-500 shadow-lg"
             >
               <Plus size={18} /> Add Material / Expense
@@ -182,7 +204,7 @@ export default function ProjectDetailPage() {
           </div>
         </div>
 
-        {/* TABLA 1: HORAS DE EMPLEADOS */}
+        {/* TABLA 1: HORAS */}
         <div className="bg-[#1e293b] rounded-xl border border-slate-700 shadow-lg overflow-hidden mb-8">
           <div className="p-4 border-b border-slate-700 bg-slate-800/50 flex justify-between items-center">
             <h2 className="text-sm font-bold text-sky-400 uppercase tracking-wider flex items-center gap-2">
@@ -214,10 +236,15 @@ export default function ProjectDetailPage() {
                       <td className="px-5 py-3 text-slate-300">{r.description}</td>
                       <td className="px-5 py-3 text-center text-slate-200 font-semibold">{r.regular_hours}h</td>
                       <td className="px-5 py-3 text-center text-amber-400 font-bold">{r.overtime_hours}h</td>
-                      <td className="px-5 py-3 text-center">
-                        <button onClick={() => handleDelete(r.id)} className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded-lg">
-                          <Trash2 size={16} />
-                        </button>
+                      <td className="px-5 py-3">
+                        <div className="flex items-center justify-center gap-2">
+                          <button onClick={() => openModalEdit(r, 'labor')} className="p-1.5 text-blue-400 hover:text-blue-300 hover:bg-blue-900/30 rounded-lg transition-colors">
+                            <Pencil size={16} />
+                          </button>
+                          <button onClick={() => handleDelete(r.id)} className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded-lg transition-colors">
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -227,7 +254,7 @@ export default function ProjectDetailPage() {
           </div>
         </div>
 
-        {/* TABLA 2: GASTOS Y MATERIALES */}
+        {/* TABLA 2: GASTOS */}
         <div className="bg-[#1e293b] rounded-xl border border-slate-700 shadow-lg overflow-hidden">
           <div className="p-4 border-b border-slate-700 bg-slate-800/50 flex justify-between items-center">
             <h2 className="text-sm font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2">
@@ -257,10 +284,15 @@ export default function ProjectDetailPage() {
                       <td className="px-5 py-3 text-right font-bold text-[#00d084]">
                         ${Number(r.material_cost).toLocaleString('en-US', {minimumFractionDigits: 2})}
                       </td>
-                      <td className="px-5 py-3 text-center">
-                        <button onClick={() => handleDelete(r.id)} className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded-lg">
-                          <Trash2 size={16} />
-                        </button>
+                      <td className="px-5 py-3">
+                        <div className="flex items-center justify-center gap-2">
+                          <button onClick={() => openModalEdit(r, 'expense')} className="p-1.5 text-blue-400 hover:text-blue-300 hover:bg-blue-900/30 rounded-lg transition-colors">
+                            <Pencil size={16} />
+                          </button>
+                          <button onClick={() => handleDelete(r.id)} className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded-lg transition-colors">
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -270,17 +302,18 @@ export default function ProjectDetailPage() {
           </div>
         </div>
 
-        {/* MODAL INTELIGENTE (CAMBIA SEGÚN EL BOTÓN) */}
+        {/* MODAL INTELIGENTE DE CREACIÓN Y EDICIÓN */}
         {isModalOpen && (
           <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
             <div className="bg-[#1e293b] rounded-xl border border-slate-700 shadow-2xl w-full max-w-lg overflow-hidden">
               <div className="flex justify-between items-center p-5 border-b border-slate-700 bg-slate-800/50">
                 <h3 className="text-lg font-bold text-white">
-                  {modalType === 'labor' ? 'Add Worker Hours' : 'Add Material / Expense'}
+                  {editingRecordId ? 'Edit ' : 'Add '}
+                  {modalType === 'labor' ? 'Worker Hours' : 'Material / Expense'}
                 </h3>
                 <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-white"><X size={20} /></button>
               </div>
-              <form onSubmit={handleAddRecord} className="p-5 space-y-4">
+              <form onSubmit={handleSaveRecord} className="p-5 space-y-4">
                 
                 {modalType === 'labor' && (
                   <div>
@@ -326,7 +359,7 @@ export default function ProjectDetailPage() {
                 <div className="pt-4 flex gap-3">
                   <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 bg-slate-700 hover:bg-slate-600 text-white p-2.5 rounded-lg font-medium">Cancel</button>
                   <button type="submit" disabled={submitting} className="flex-1 bg-[#00d084] hover:bg-[#00b370] text-slate-900 p-2.5 rounded-lg font-bold flex justify-center items-center gap-2">
-                    {submitting && <Loader2 className="animate-spin" size={16} />} Save Entry
+                    {submitting && <Loader2 className="animate-spin" size={16} />} {editingRecordId ? 'Update Entry' : 'Save Entry'}
                   </button>
                 </div>
               </form>
@@ -335,7 +368,7 @@ export default function ProjectDetailPage() {
         )}
       </div>
 
-      {/* DOCUMENTO IMPRESO (PDF BLANCO CON LAS DOS TABLAS SEPARADAS) */}
+      {/* DOCUMENTO IMPRESO (PDF BLANCO) */}
       <div className="hidden print:block max-w-5xl mx-auto bg-white p-10 print:w-full text-slate-900">
         <div className="flex justify-between items-start border-b-2 border-slate-800 pb-6 mb-6">
           <div>
