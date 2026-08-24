@@ -42,7 +42,8 @@ export default function InventarioPage() {
     'Mecánico': 'Mechanical',
     'Eléctrico': 'Electrical',
     'Neumático': 'Pneumatic',
-    'Consumible': 'Consumable'
+    'Consumible': 'Supplies',
+    'Supplies': 'Supplies'
   }
 
   const uomMap: Record<string, string> = {
@@ -103,14 +104,12 @@ export default function InventarioPage() {
     setCargandoHistorial(false)
   }
 
-  // 🟢 NUEVO: PREPARAR MODAL PARA NUEVA PIEZA
   const abrirModalNuevo = () => {
     setEditandoId(null)
     setForm({ nombre: "", numero_parte: "", categoria: "Mecánico", cantidad: 1, stock_minimo: 1, costo: 0, unidad_medida: "Pza", maquina_asignada: "General" })
     setMostrarModal(true)
   }
 
-  // 🟢 NUEVO: PREPARAR MODAL PARA EDITAR PIEZA
   const abrirModalEditar = (pieza: any) => {
     setEditandoId(pieza.id)
     setForm({
@@ -126,7 +125,6 @@ export default function InventarioPage() {
     setMostrarModal(true)
   }
 
-  // 🟢 NUEVO: ELIMINAR PIEZA
   const eliminarPieza = async (id: string) => {
     const confirmar = window.confirm("Are you sure you want to delete this part? This action cannot be undone.")
     if (!confirmar) return
@@ -144,7 +142,6 @@ export default function InventarioPage() {
     }
   }
 
-  // 🟢 ACTUALIZADO: GUARDAR O ACTUALIZAR PIEZA
   async function guardarPieza(e: React.FormEvent) {
     e.preventDefault()
     setGuardando(true)
@@ -193,7 +190,9 @@ export default function InventarioPage() {
 
   const refaccionesFiltradas = refacciones.filter(ref => {
     const coincideTexto = ref.nombre?.toLowerCase().includes(busqueda.toLowerCase()) || ref.numero_parte?.toLowerCase().includes(busqueda.toLowerCase());
-    const coincideCategoria = filtroCategoria === "Todas" || ref.categoria === filtroCategoria;
+    const categoriaPieza = ref.categoria === 'Consumible' ? 'Supplies' : ref.categoria;
+    const coincideCategoria = filtroCategoria === "Todas" || categoriaPieza === filtroCategoria;
+    
     return coincideTexto && coincideCategoria;
   })
 
@@ -208,7 +207,7 @@ export default function InventarioPage() {
           </div>
           <div>
             <h1 className="text-3xl font-black tracking-tight text-white">Inventory (Spare Parts)</h1>
-            <p className="text-slate-400 text-sm mt-1">Spare parts management, consumables, and warehouse control</p>
+            <p className="text-slate-400 text-sm mt-1">Spare parts management, supplies, and warehouse control</p>
           </div>
         </div>
         
@@ -269,7 +268,7 @@ export default function InventarioPage() {
             <option value="Mecánico">Mechanical</option>
             <option value="Eléctrico">Electrical</option>
             <option value="Neumático">Pneumatic</option>
-            <option value="Consumible">Consumable</option>
+            <option value="Supplies">Supplies</option>
           </select>
         </div>
 
@@ -364,7 +363,7 @@ export default function InventarioPage() {
             </button>
             
             <h2 className="text-2xl font-black text-white mb-2">Shop Floor Usage Log</h2>
-            <p className="text-slate-400 text-sm mb-6">Audit trail tracking who retrieved parts and consumables from the kiosk.</p>
+            <p className="text-slate-400 text-sm mb-6">Audit trail tracking who retrieved parts and supplies from the kiosk.</p>
             
             <div className="overflow-x-auto max-h-[60vh] custom-scrollbar border border-slate-800 rounded-2xl">
               <table className="w-full text-left text-sm whitespace-nowrap">
@@ -410,9 +409,9 @@ export default function InventarioPage() {
                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
             
-            {/* 🟢 TÍTULO DINÁMICO */}
+            {/* 🟢 TÍTULO DINÁMICO ACTUALIZADO */}
             <h2 className="text-2xl font-black text-white mb-6">
-              {editandoId ? "Edit Spare Part" : "Register New Spare Part"}
+              {editandoId ? "Edit Part / Supply" : "Register New Part / Supply"}
             </h2>
             
             <form onSubmit={guardarPieza} className="space-y-4">
@@ -433,7 +432,7 @@ export default function InventarioPage() {
                     <option value="Mecánico" className="bg-slate-900">Mechanical</option>
                     <option value="Eléctrico" className="bg-slate-900">Electrical</option>
                     <option value="Neumático" className="bg-slate-900">Pneumatic</option>
-                    <option value="Consumible" className="bg-slate-900">Consumable</option>
+                    <option value="Supplies" className="bg-slate-900">Supplies</option>
                   </select>
                 </div>
 
@@ -475,8 +474,9 @@ export default function InventarioPage() {
                 </div>
               </div>
 
+              {/* 🟢 BOTÓN ACTUALIZADO */}
               <button type="submit" disabled={guardando} className="w-full mt-6 bg-blue-600 hover:bg-blue-500 text-white py-4 text-lg font-bold rounded-xl transition-all shadow-[0_0_15px_rgba(37,99,235,0.3)]">
-                {guardando ? "Saving..." : (editandoId ? "Update Part" : "Save Spare Part")}
+                {guardando ? "Saving..." : (editandoId ? "Update Item" : "Save Part / Supply")}
               </button>
             </form>
           </div>
