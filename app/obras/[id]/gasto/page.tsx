@@ -1,17 +1,40 @@
 // @ts-nocheck
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useParams, useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
-import { Camera, Send, CheckCircle, AlertCircle, HardHat } from "lucide-react"
+import { Camera, Send, CheckCircle, HardHat, ArrowLeft } from "lucide-react"
+import Link from "next/link"
 
 export default function SubirGastoAlbanil() {
+  const params = useParams()
+  const router = useRouter()
+  const proyectoId = params.id
+
+  const [proyecto, setProyecto] = useState<any>(null)
   const [concepto, setConcepto] = useState("")
   const [monto, setMonto] = useState("")
   const [categoria, setCategoria] = useState("Materiales")
   const [archivo, setArchivo] = useState<File | null>(null)
   const [cargando, setCargando] = useState(false)
   const [exito, setExito] = useState(false)
+
+  useEffect(() => {
+    if (proyectoId) {
+      cargarProyecto()
+    }
+  }, [proyectoId])
+
+  async function cargarProyecto() {
+    const { data } = await supabase
+      .from("proyectos")
+      .select("nombre")
+      .eq("id", proyectoId)
+      .single()
+
+    if (data) setProyecto(data)
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -21,10 +44,10 @@ export default function SubirGastoAlbanil() {
     try {
       let evidenciaUrl = null
 
-      // 1. Si subió una foto del ticket, la guardamos en el Storage de Supabase que creamos antes
+      // 1. Si subió una foto del ticket, la guardamos en el Storage de Supabase
       if (archivo) {
         const nombreArchivo = `${Date.now()}-${archivo.name}`
-        const { data: uploadData, error: uploadError } = await supabase.storage
+        const { error: uploadError } = await supabase.storage
           .from("tickets_obra")
           .upload(nombreArchivo, archivo)
 
@@ -38,14 +61,15 @@ export default function SubirGastoAlbanil() {
         evidenciaUrl = publicUrlData.publicUrl
       }
 
-      // 2. Insertamos el gasto en la tabla para que a Rafael le aparezca como "Pendiente"
+      // 2. Insertamos el gasto asociado al proyecto actual con estatus "Pendiente"
       const { error: insertError } = await supabase
-        .from("gastos_tijuana")
+        .from("gastos_obra")
         .insert([{
+          proyecto_id: proyectoId,
           concepto,
           monto: parseFloat(monto),
           categoria,
-          evidencia_url: evidenciaUrl,
+          ticket_url: evidenciaUrl,
           registrado_por: "Maestro Albañil",
           estatus: "Pendiente"
         }])
@@ -67,21 +91,28 @@ export default function SubirGastoAlbanil() {
 
   return (
     <div className="min-h-screen bg-[#070B14] text-slate-200 p-6 flex flex-col items-center justify-center font-sans">
+      
+      <div className="max-w-md w-full mb-4">
+        <Link href={`/obra/${proyectoId}`} className="inline-flex items-center gap-2 text-slate-400 hover:text-white transition-colors text-xs font-bold uppercase tracking-widest bg-[#0B1221] border border-slate-800 px-4 py-2 rounded-xl">
+          <ArrowLeft size={14} /> Volver al Tablero
+        </Link>
+      </div>
+
       <div className="max-w-md w-full bg-[#0B1221] border border-slate-800 rounded-3xl p-8 shadow-2xl relative">
         
         <div className="text-center mb-8">
           <div className="w-16 h-16 bg-emerald-500/10 text-emerald-400 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-emerald-500/30">
             <HardHat size={32} />
           </div>
-          <h1 className="text-2xl font-black text-white">Reporte de Gasto - Obra</h1>
-          <p className="text-slate-400 text-sm mt-1">Registra los gastos y compras de la obra.</p>
+          <h1 className="text-2xl font-black text-white">Reporte de Gasto</h1>
+          <p className="text-emerald-400 font-bold text-xs mt-1">{proyecto?.nombre || "Cargando obra..."}</p>
         </div>
 
         {exito ? (
           <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 p-6 rounded-2xl text-center space-y-3 animate-in zoom-in-95">
             <CheckCircle size={48} className="mx-auto" />
             <h3 className="font-bold text-lg">¡Gasto registrado con éxito!</h3>
-            <p className="text-xs text-slate-300">Rafael lo revisará y aprobará en su panel financiero.</p>
+            <p className="text-xs text-slate-300">Rafael lo revisará y aprobará en seu panel financiero.</p>
             <button onClick={() => setExito(false)} className="w-full mt-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl">
               Registrar Otro Gasto
             </button>
