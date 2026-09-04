@@ -176,4 +176,4 @@ export default function TelemetriaHub() {
       </div>
     </div>
   )
-}
+}run

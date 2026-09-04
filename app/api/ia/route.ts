@@ -6,7 +6,7 @@ export async function POST(req: Request) {
   try {
     const { mensaje } = await req.json();
 
-    // 1. Prompt estricto
+    // 1. Prompt estricto para extraer la falla y el equipo
     const prompt = `
       Eres KINETIX AI, el asistente virtual de un sistema CMMS.
       El usuario te va a reportar un problema de mantenimiento.
@@ -27,8 +27,8 @@ export async function POST(req: Request) {
         throw new Error("Falta la GEMINI_API_KEY en tu archivo .env.local");
     }
 
-    // 🟢 INTENTO A PRUEBA DE FALLOS: Usando "gemini-1.5-flash-latest"
-    const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`, {
+    // 🟢 EL MODELO MÁS ESTABLE Y UNIVERSAL: gemini-pro
+    const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -44,6 +44,7 @@ export async function POST(req: Request) {
     const geminiData = await geminiRes.json();
     let iaText = geminiData.candidates[0].content.parts[0].text;
     
+    // Limpiar posibles comillas de formato JSON
     iaText = iaText.replace(/```json/g, '').replace(/```/g, '').trim();
     
     let infoProcesada;
@@ -53,7 +54,7 @@ export async function POST(req: Request) {
       throw new Error(`La IA no devolvió un JSON válido. Texto: ${iaText}`);
     }
 
-    // 3. Buscar la máquina usando .maybeSingle()
+    // 3. Buscar la máquina usando .maybeSingle() para evitar caídas
     let equipoId = null;
     let nombreEquipoFinal = infoProcesada.equipo;
 
@@ -71,9 +72,10 @@ export async function POST(req: Request) {
       }
     }
 
+    // Buscar empresa
     const { data: empresa } = await supabase.from("empresas").select("id").limit(1).maybeSingle();
 
-    // 4. Crear la Orden
+    // 4. Crear la Orden Correctiva
     const nuevaOrden = {
       equipo_id: equipoId, 
       empresa_id: empresa?.id,
@@ -85,7 +87,6 @@ export async function POST(req: Request) {
 
     const { error: errorInsert } = await supabase.from('ordenes_trabajo').insert([nuevaOrden]);
     
-    // 🟢 Si Supabase falla, que nos diga por qué
     if (errorInsert) throw new Error(`Error de Base de Datos: ${errorInsert.message}`);
 
     // 5. Responder
@@ -100,7 +101,6 @@ export async function POST(req: Request) {
     }
 
   } catch (error: any) {
-    // 🟢 AHORA MANDAMOS EL ERROR REAL A LA BURBUJA PARA LEERLO DIRECTO AHÍ
     return NextResponse.json({ respuesta: `❌ ERROR TÉCNICO: ${error.message}` });
   }
 }
