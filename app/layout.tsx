@@ -4,6 +4,7 @@ import { Inter } from "next/font/google"
 import Sidebar from "@/components/Sidebar"
 import NotificadorGlobal from "@/components/NotificadorGlobal"
 import AuthGuard from "@/components/AuthGuard"
+// @ts-ignore
 import "./globals.css"
 
 // Cargamos la fuente moderna
@@ -55,4 +56,4 @@ export default function RootLayout({
     </html>
   )
 }
->>>>>>> 68f8159b5414678139193636dad420a2893d0280
+
