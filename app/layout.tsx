@@ -1,4 +1,3 @@
-
 import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import Sidebar from "@/components/Sidebar"
@@ -22,6 +21,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
+      <head>
+        {/* CDN de respaldo de emergencia para asegurar los estilos de Tailwind */}
+        <script src="https://cdn.tailwindcss.com"></script>
+      </head>
       <body className={`${inter.className} bg-[#070B14] text-slate-200 antialiased selection:bg-emerald-500/30 selection:text-emerald-200`}>
         
         <AuthGuard>
@@ -34,7 +37,7 @@ export default function RootLayout({
             {/* 2. CONTENIDO PRINCIPAL 
                 - flex-1: Toma el resto del espacio disponible al lado del Sidebar.
                 - min-w-0: EL TRUCO MÁGICO. Evita que las tablas fuercen a la pantalla a estirarse, 
-                           activando el scroll horizontal perfecto en móviles.
+                            activando el scroll horizontal perfecto en móviles.
             */}
             <main className="flex-1 min-w-0 flex flex-col transition-all duration-300">
               
@@ -56,4 +59,3 @@ export default function RootLayout({
     </html>
   )
 }
-

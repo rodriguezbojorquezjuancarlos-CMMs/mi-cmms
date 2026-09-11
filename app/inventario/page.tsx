@@ -372,20 +372,22 @@ export default function InventarioPage() {
                     <th className="p-4">Date / Time</th>
                     <th className="p-4">Operator</th>
                     <th className="p-4">Part / Tool</th>
+                    <th className="p-4">Machine</th>
                     <th className="p-4 text-center">Qty Used</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800 text-slate-300">
                   {cargandoHistorial ? (
-                    <tr><td colSpan={4} className="p-8 text-center text-blue-400 animate-pulse font-bold">Loading log data...</td></tr>
+                    <tr><td colSpan={5} className="p-8 text-center text-blue-400 animate-pulse font-bold">Loading log data...</td></tr>
                   ) : historialConsumos.length === 0 ? (
-                    <tr><td colSpan={4} className="p-8 text-center text-slate-500">No usage records found yet. Try using a part in the kiosk!</td></tr>
+                    <tr><td colSpan={5} className="p-8 text-center text-slate-500">No usage records found yet. Try using a part in the kiosk!</td></tr>
                   ) : (
                     historialConsumos.map((log, idx) => (
                       <tr key={idx} className="hover:bg-slate-900/50">
                         <td className="p-4 text-slate-400 font-mono text-xs">{new Date(log.fecha).toLocaleString()}</td>
                         <td className="p-4 font-bold text-white">{log.operador}</td>
                         <td className="p-4 text-blue-400 font-medium">{log.pieza_nombre}</td>
+                        <td className="p-4 text-slate-400 text-xs">{log.maquina || '—'}</td>
                         <td className="p-4 text-center font-black text-emerald-400">-{log.cantidad}</td>
                       </tr>
                     ))
@@ -439,12 +441,12 @@ export default function InventarioPage() {
                 <div className="md:col-span-2">
                   <label className="block text-xs font-bold text-blue-400 uppercase mb-2">Assigned Workstation (Kiosk Filter)</label>
                   <select value={form.maquina_asignada} onChange={(e) => setForm({...form, maquina_asignada: e.target.value})} className="w-full bg-[#070B14] border border-slate-700 p-4 rounded-xl text-slate-200 focus:border-blue-500 outline-none cursor-pointer">
-                    <option value="General" className="bg-slate-900">General (Available for all machines)</option>
-                    <option value="CNC Router #1" className="bg-slate-900">CNC Router #1 (Weeke)</option>
+                    <option value="General" className="bg-slate-900">General / Sin asignar (NO aparece en ningún kiosko)</option>
+                    <option value="CNC Router #1" className="bg-slate-900">CNC Router #1</option>
                     <option value="CNC Router #2" className="bg-slate-900">CNC Router #2</option>
                     <option value="CNC Panel Saw" className="bg-slate-900">CNC Panel Saw</option>
-                    <option value="Edge Bander" className="bg-slate-900">Edge Bander</option>
-                    <option value="CNC Dowell Drill" className="bg-slate-900">CNC Dowell Drill</option>
+                    <option value="EdgeBander" className="bg-slate-900">EdgeBander</option>
+                    <option value="Dowel Drill" className="bg-slate-900">Dowel Drill</option>
                   </select>
                 </div>
 

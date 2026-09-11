@@ -18,34 +18,34 @@ export default function KioskoOperadores() {
   const [errorNip, setErrorNip] = useState(false)
 
   const maquinas = [
-    "CNC Router #1 (Weeke)",
+    "CNC Router #1",
     "CNC Router #2",
     "CNC Panel Saw",
-    "Edge Bander",
-    "CNC Dowell Drill"
+    "EdgeBander",
+    "Dowel Drill"
   ]
 
   const cargarInventarioMaquina = async (maquina: string) => {
     setCargando(true)
     setMaquinaSeleccionada(maquina)
-    
-    const nombreCorto = maquina.split(' (')[0].toLowerCase()
 
+    // Solo piezas asignadas EXACTAMENTE a esta máquina. Ya no hay
+    // "General" como comodín: si una pieza no quedó asignada a esta
+    // máquina, el operador no la ve ni la puede tocar desde aquí.
+    // Si no hay ninguna, la lista sale vacía (el estado "No parts found"
+    // que ya tenías abajo se encarga de mostrarlo).
     const { data, error } = await supabase
       .from("refacciones")
       .select("*")
-      .gt("cantidad", 0) 
+      .eq("maquina_asignada", maquina)
+      .gt("cantidad", 0)
       .order("nombre", { ascending: true })
 
     if (error) {
       console.error(error)
       setInventario([])
     } else {
-      const inventarioFiltrado = (data || []).filter(pieza => {
-        const maquinaAsignada = (pieza.maquina_asignada || "").toLowerCase()
-        return maquinaAsignada.includes(nombreCorto) || maquinaAsignada.includes("general")
-      })
-      setInventario(inventarioFiltrado)
+      setInventario(data || [])
     }
     setCargando(false)
   }
@@ -72,7 +72,7 @@ export default function KioskoOperadores() {
       // 1. Verificar si el NIP existe en la tabla "perfiles"
       const { data: operador, error: errorNipDb } = await supabase
         .from("perfiles")
-        .select("nombre")
+        .select("id, nombre")
         .eq("nip", nip)
         .maybeSingle()
 
@@ -93,6 +93,28 @@ export default function KioskoOperadores() {
         .eq("id", piezaActiva.id)
 
       if (errorStock) throw errorStock
+
+      // 3. Dejamos constancia en la bitácora de auditoría: quién, qué,
+      //    cuánto, de qué máquina y cuándo. Esto es lo que alimenta la
+      //    pantalla "Shop Floor Usage Log" en Inventario. Si esto falla,
+      //    no revertimos el descuento de stock (ya se hizo), pero sí
+      //    avisamos, porque significa que ese retiro quedó sin rastro.
+      const { error: errorHistorial } = await supabase
+        .from("historial_consumos")
+        .insert([{
+          fecha: new Date().toISOString(),
+          operador: operador.nombre,
+          operador_id: operador.id,
+          pieza_nombre: piezaActiva.nombre,
+          pieza_id: piezaActiva.id,
+          cantidad: cantidadRetirar,
+          maquina: maquinaSeleccionada
+        }])
+
+      if (errorHistorial) {
+        console.error("No se pudo guardar el registro de auditoría:", errorHistorial)
+        alert(`⚠️ Part usage was recorded but the audit log entry failed: ${errorHistorial.message}`)
+      }
 
       // Mensaje de éxito glorioso con el nombre del operador
       alert(`✅ Access Granted!\n\nOperator: ${operador.nombre}\nLogged: ${cantidadRetirar}x ${piezaActiva.nombre}`)
@@ -173,10 +195,10 @@ export default function KioskoOperadores() {
 
             <div className="border-t border-slate-800 my-6"></div>
 
-            {/* Ingreso de NIP */}
+            {/* Ingreso de Número de Empleado */}
             <div className="text-center mb-6">
               <p className="text-slate-400 font-bold text-sm uppercase tracking-widest flex items-center justify-center gap-2 mb-4">
-                <User size={16} /> Enter Operator PIN
+                <User size={16} /> Enter Employee Number
               </p>
               
               <div className="flex justify-center gap-3 mb-2">
@@ -189,7 +211,7 @@ export default function KioskoOperadores() {
                   </div>
                 ))}
               </div>
-              {errorNip && <p className="text-rose-400 text-sm font-bold animate-pulse mt-2">Invalid PIN. Try again.</p>}
+              {errorNip && <p className="text-rose-400 text-sm font-bold animate-pulse mt-2">Employee number not found. Try again.</p>}
             </div>
 
             {/* Teclado numérico Táctil */}

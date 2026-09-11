@@ -22,18 +22,20 @@ export default function VistaTelemetriaDetalle({ params }: any) {
   useEffect(() => {
     async function cargarDatos() {
       // 1. Traer datos estáticos de la máquina (Ficha Técnica)
-      const { data: dataEquipo } = await supabase
+      const { data: dataEquipo, error: errorEquipo } = await supabase
         .from('equipos')
-        .select('*')
+        .select('id, nombre, modelo, marca, numero_serie, estatus, area')
         .eq('id', maquinaId)
         .single();
       
+      if (errorEquipo) console.error('Error cargando equipo:', errorEquipo);
       if (dataEquipo) setEquipo(dataEquipo);
 
       // 2. Traer el historial reciente (Últimas 5 lecturas)
+      //    Se apoya en el índice (maquina_id, created_at desc) recién creado.
       const { data: dataHistorial } = await supabase
         .from('lecturas_iot')
-        .select('*')
+        .select('maquina_id, created_at, amperaje_motor, temperatura_olla, vibracion_x')
         .eq('maquina_id', maquinaId)
         .order('created_at', { ascending: false })
         .limit(5);
@@ -127,7 +129,7 @@ export default function VistaTelemetriaDetalle({ params }: any) {
                 </h3>
                 <div className="space-y-3">
                   <FichaItem label="Model" value={equipo.modelo || 'N/A'} />
-                  <FichaItem label="Serial Number" value={equipo.num_serie || 'N/A'} />
+                  <FichaItem label="Serial Number" value={equipo.numero_serie || 'N/A'} />
                   <FichaItem label="Voltage" value={equipo.voltaje || '460V 3~'} />
                   <FichaItem label="Full Load Amps" value={equipo.amperaje_max || '33 A'} />
                   <FichaItem label="Department" value={equipo.area || 'Production'} />

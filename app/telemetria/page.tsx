@@ -13,27 +13,30 @@ export default function TelemetriaHub() {
 
   useEffect(() => {
     async function cargarDatos() {
-      // 1. Traer TODO el catálogo de máquinas
-      const { data: dataEquipos } = await supabase
+      // 1. Traer el catálogo de máquinas (solo las columnas que existen
+      //    de verdad en tu tabla 'equipos' — sin imagen_url, que no existe
+      //    ahí; por eso la pantalla se quedaba en blanco).
+      const { data: dataEquipos, error: errorEquipos } = await supabase
         .from('equipos')
-        .select('*')
+        .select('id, nombre, modelo')
         .order('nombre', { ascending: true });
-      
+
+      if (errorEquipos) console.error('Error cargando equipos:', errorEquipos);
       if (dataEquipos) setEquipos(dataEquipos);
 
-      // 2. Traer lecturas recientes para ver quiénes están conectados
+      // 2. Traer la ÚLTIMA lectura de CADA máquina (una fila por máquina,
+      //    calculado del lado de Postgres con la vista lecturas_iot_ultima).
+      //    Antes esto traía las últimas 100 lecturas de TODA la planta y
+      //    reducía en el cliente, lo cual perdía máquinas si había mucho
+      //    tráfico de otras — quedaban marcadas como offline incorrectamente.
       const { data: dataIoT } = await supabase
-        .from('lecturas_iot')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(100); 
+        .from('lecturas_iot_ultima')
+        .select('maquina_id, amperaje_motor, temperatura_olla, created_at');
 
       if (dataIoT) {
-        const ultimasLecturas = {};
+        const ultimasLecturas: Record<string, any> = {};
         dataIoT.forEach(lectura => {
-          if (!ultimasLecturas[lectura.maquina_id]) {
-            ultimasLecturas[lectura.maquina_id] = lectura;
-          }
+          ultimasLecturas[lectura.maquina_id] = lectura;
         });
         setTelemetria(ultimasLecturas);
       }
