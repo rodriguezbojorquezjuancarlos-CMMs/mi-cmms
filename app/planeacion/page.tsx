@@ -1,10 +1,11 @@
 // @ts-nocheck
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { supabase } from "@/lib/supabase"
 import Link from "next/link"
-import { Trash2 } from "lucide-react"
+import { Trash2, AlertTriangle } from "lucide-react"
+import { lecTocaEnFecha, contarColisionesEnFecha, proximaFecha, FRECUENCIAS } from "@/lib/recurrencia"
 
 export default function PlaneacionPage() {
   const [equipos, setEquipos] = useState<any[]>([])
@@ -16,7 +17,11 @@ export default function PlaneacionPage() {
   const [equipoId, setEquipoId] = useState("")
   const [tarea, setTarea] = useState("")
   const [frecuencia, setFrecuencia] = useState("Monthly")
-  const [diaSugerido, setDiaSugerido] = useState("Monday")
+
+  // Fecha de inicio real — reemplaza al viejo "Suggested Day" suelto.
+  // Es el ancla desde la que se calcula TODA la recurrencia futura.
+  const hoyStr = new Date().toISOString().slice(0, 10)
+  const [fechaInicio, setFechaInicio] = useState(hoyStr)
 
   // Traductor de emergencia para los datos viejos en Spanglish (para que no se rompa mientras los borras)
   const limpiarTextoAntiguo = (texto: string) => {
@@ -29,6 +34,16 @@ export default function PlaneacionPage() {
     };
     return mapa[texto.toLowerCase()] || texto;
   }
+
+  // Cuántos planes YA EXISTENTES también caerían exactamente en la
+  // fecha de inicio que estás por elegir. Esto es lo que te avisa
+  // "oye, ese día ya está cargado" ANTES de guardar, para que puedas
+  // correr la fecha unos días y repartir la carga tú mismo.
+  const colisiones = useMemo(() => {
+    if (!fechaInicio) return 0
+    const fechaObj = new Date(fechaInicio + 'T00:00:00')
+    return contarColisionesEnFecha(planes, fechaObj)
+  }, [planes, fechaInicio])
 
   useEffect(() => {
     cargarDatos()
@@ -47,14 +62,19 @@ export default function PlaneacionPage() {
   // GUARDAR PLAN 100% EN INGLÉS
   async function guardarPlan(e: React.FormEvent) {
     e.preventDefault()
-    if (!equipoId || !tarea) return alert("Please fill in all required fields")
+    if (!equipoId || !tarea || !fechaInicio) return alert("Please fill in all required fields")
+
+    // dia_semana queda como campo informativo, derivado automáticamente
+    // de la fecha que elegiste — ya no se pregunta aparte.
+    const diaDerivado = new Date(fechaInicio + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long' })
 
     const { error } = await supabase.from("plan_maestro").insert([
       { 
         equipo_id: equipoId, 
         Tarea: tarea, 
-        Frecuencia: frecuencia, // Ahora guarda "Monthly", "Weekly", etc.
-        dia_semana: diaSugerido // Ahora guarda "Monday", "Tuesday", etc.
+        Frecuencia: frecuencia,
+        Fecha_inicio: fechaInicio,
+        dia_semana: diaDerivado
       }
     ])
 
@@ -173,18 +193,20 @@ export default function PlaneacionPage() {
               </select>
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Suggested Day</label>
-              <select value={diaSugerido} onChange={(e) => setDiaSugerido(e.target.value)} className="w-full bg-[#070B14] border border-slate-700 p-4 rounded-xl text-white focus:border-indigo-500 outline-none cursor-pointer">
-                <option value="Monday" className="bg-slate-900">Monday</option>
-                <option value="Tuesday" className="bg-slate-900">Tuesday</option>
-                <option value="Wednesday" className="bg-slate-900">Wednesday</option>
-                <option value="Thursday" className="bg-slate-900">Thursday</option>
-                <option value="Friday" className="bg-slate-900">Friday</option>
-                <option value="Saturday" className="bg-slate-900">Saturday</option>
-                <option value="Sunday" className="bg-slate-900">Sunday</option>
-              </select>
+              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Start Date</label>
+              <input type="date" value={fechaInicio} onChange={(e) => setFechaInicio(e.target.value)} className="w-full bg-[#070B14] border border-slate-700 p-4 rounded-xl text-white focus:border-indigo-500 outline-none" />
+              <p className="text-[11px] text-slate-500 mt-1.5">First occurrence. Future ones are calculated automatically from here based on the frequency.</p>
             </div>
           </div>
+
+          {colisiones > 0 && (
+            <div className="flex items-start gap-3 bg-amber-500/10 border border-amber-500/30 rounded-xl p-4">
+              <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+              <p className="text-sm text-amber-300">
+                <span className="font-bold">{colisiones} other {colisiones === 1 ? 'task is' : 'tasks are'}</span> already scheduled for that exact date. Consider shifting the start date a few days to spread the workload across the week.
+              </p>
+            </div>
+          )}
           <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-4 rounded-xl transition-all shadow-[0_0_20px_rgba(79,70,229,0.3)]">
             + Save Maintenance Plan
           </button>
@@ -212,7 +234,11 @@ export default function PlaneacionPage() {
                   
                   <td className="px-6 py-5 font-medium truncate max-w-[250px]">
                     {plan.Tarea}
-                    <div className="text-xs text-slate-500 mt-1">Day: {limpiarTextoAntiguo(plan.dia_semana)}</div>
+                    <div className="text-xs text-slate-500 mt-1">
+                      {plan.Fecha_inicio
+                        ? `Next due: ${proximaFecha(plan.Fecha_inicio, plan.Frecuencia)?.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
+                        : '⚠️ No start date set — won\'t auto-generate'}
+                    </div>
                   </td>
                   
                   <td className="px-6 py-5 text-center">

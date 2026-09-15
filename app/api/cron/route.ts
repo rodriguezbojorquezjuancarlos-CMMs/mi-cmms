@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase-admin';
+import { lecTocaEnFecha } from '@/lib/recurrencia';
 
 export async function GET(request: Request) {
   // 1. Candado de seguridad (Solo bloquea si está en Vercel Producción, permite testeo en Localhost)
@@ -10,54 +11,55 @@ export async function GET(request: Request) {
   }
 
   try {
-    // 2. Averiguar qué día es hoy automáticamente en INGLÉS
-    const dias = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    
-    // Al correr en Vercel (UTC), ajustamos exactamente a la zona horaria de Sonora
-    const fechaLocal = new Date(new Date().toLocaleString("en-US", {timeZone: "America/Hermosillo"}));
-    const diaIngles = dias[fechaLocal.getDay()]; // Ej: 'Tuesday'
+    // 2. Fecha de hoy, ajustada a la zona horaria de Sonora
+    const fechaLocal = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Hermosillo" }));
 
-    // 3. Buscar en la tabla plan_maestro buscando en la columna correcta (dia_semana)
-    const { data: tareasDeHoy, error: errorLectura } = await supabase
+    // 3. Traemos TODOS los planes maestros y calculamos en código quién
+    //    le toca hoy — usando Fecha_inicio + Frecuencia, NO solo el día
+    //    de la semana. Antes esto disparaba TODOS los planes cuyo día
+    //    de la semana coincidiera con hoy, sin importar si eran
+    //    semanales, trimestrales o anuales — por eso un plan "Annual"
+    //    se estaba generando cada semana.
+    const { data: todosLosPlanes, error: errorLectura } = await supabaseAdmin
       .from('plan_maestro')
-      .select('*')
-      .eq('dia_semana', diaIngles); 
+      .select('*');
 
     if (errorLectura) throw errorLectura;
 
-    if (!tareasDeHoy || tareasDeHoy.length === 0) {
-      return NextResponse.json({ mensaje: `No preventive tasks scheduled for today (${diaIngles}).` });
+    const planesQueTocanHoy = (todosLosPlanes || []).filter((plan: any) =>
+      lecTocaEnFecha(plan.Fecha_inicio, plan.Frecuencia, fechaLocal)
+    );
+
+    if (planesQueTocanHoy.length === 0) {
+      return NextResponse.json({ mensaje: `No preventive tasks due today (${fechaLocal.toDateString()}).` });
     }
 
-    // Buscamos la empresa para no tener errores de guardado
-    const { data: empresaFallback } = await supabase.from("empresas").select("id").limit(1).single();
+    const { data: empresaFallback } = await supabaseAdmin.from("empresas").select("id").limit(1).single();
     const empresaIdValido = empresaFallback?.id;
 
-    // 4. Empaquetar las tareas
-    const nuevasOrdenes = tareasDeHoy.map((plan: any) => {
-       const fechaMadrugada = new Date();
-       fechaMadrugada.setHours(3, 0, 0, 0);
+    const nuevasOrdenes = planesQueTocanHoy.map((plan: any) => {
+      const fechaMadrugada = new Date();
+      fechaMadrugada.setHours(3, 0, 0, 0);
 
-       return {
-         equipo_id: plan.equipo_id,
-         empresa_id: empresaIdValido,
-         descripcion_falla: `[AUTO-GENERATED] Maintenance per plan: ${plan.Tarea}`,
-         tipo_mantenimiento: 'Preventivo',
-         estatus: 'Abierta', // 🟢 REGRESAMOS A 'Abierta' PARA PASAR EL CANDADO DE SUPABASE
-         creado_at: fechaMadrugada.toISOString()
-       };
+      return {
+        equipo_id: plan.equipo_id,
+        empresa_id: empresaIdValido,
+        descripcion_falla: `[AUTO-GENERATED] Maintenance per plan: ${plan.Tarea}`,
+        tipo_mantenimiento: 'Preventivo',
+        estatus: 'Abierta',
+        creado_at: fechaMadrugada.toISOString()
+      };
     });
 
-    // 5. Inyectar las órdenes al Kanban (Tabla ordenes_trabajo)
-    const { error: errorInsert } = await supabase
+    const { error: errorInsert } = await supabaseAdmin
       .from('ordenes_trabajo')
       .insert(nuevasOrdenes);
-      
+
     if (errorInsert) throw errorInsert;
 
-    return NextResponse.json({ 
-      exito: true, 
-      mensaje: `¡Misión Cumplida! El robot nocturno creó ${nuevasOrdenes.length} órdenes automáticas para el ${diaIngles}.` 
+    return NextResponse.json({
+      exito: true,
+      mensaje: `¡Misión Cumplida! Se generaron ${nuevasOrdenes.length} órdenes automáticas para el ${fechaLocal.toDateString()}, según la frecuencia real de cada plan.`
     });
 
   } catch (error: any) {

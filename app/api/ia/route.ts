@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 
 export async function POST(req: Request) {
   try {
@@ -27,8 +27,12 @@ export async function POST(req: Request) {
         throw new Error("Falta la GEMINI_API_KEY en tu archivo .env.local");
     }
 
-    // 🟢 EL MODELO MÁS ESTABLE Y UNIVERSAL: gemini-pro
-    const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`, {
+    // 🟢 Modelo estable vigente (sep 2026): gemini-3.5-flash.
+    // gemini-pro y gemini-2.5-pro ya no existen — Google los fue
+    // apagando durante 2026. Si Google vuelve a deprecar este,
+    // el error de la API lo va a decir explícitamente en el mensaje
+    // (revisa la consola/logs si este endpoint empieza a fallar).
+    const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -59,7 +63,7 @@ export async function POST(req: Request) {
     let nombreEquipoFinal = infoProcesada.equipo;
 
     if (infoProcesada.equipo && infoProcesada.equipo !== "null") {
-      const { data: equipoEncontrado } = await supabase
+      const { data: equipoEncontrado } = await supabaseAdmin
         .from('equipos')
         .select('id, nombre')
         .ilike('nombre', `%${infoProcesada.equipo}%`)
@@ -73,7 +77,7 @@ export async function POST(req: Request) {
     }
 
     // Buscar empresa
-    const { data: empresa } = await supabase.from("empresas").select("id").limit(1).maybeSingle();
+    const { data: empresa } = await supabaseAdmin.from("empresas").select("id").limit(1).maybeSingle();
 
     // 4. Crear la Orden Correctiva
     const nuevaOrden = {
@@ -85,7 +89,7 @@ export async function POST(req: Request) {
       creado_at: new Date().toISOString()
     };
 
-    const { error: errorInsert } = await supabase.from('ordenes_trabajo').insert([nuevaOrden]);
+    const { error: errorInsert } = await supabaseAdmin.from('ordenes_trabajo').insert([nuevaOrden]);
     
     if (errorInsert) throw new Error(`Error de Base de Datos: ${errorInsert.message}`);
 

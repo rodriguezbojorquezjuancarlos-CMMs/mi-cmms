@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react"
 import { supabase } from "@/lib/supabase"
 import { useRouter } from "next/navigation"
+import { lecTocaEnFecha } from "@/lib/recurrencia"
 
 export default function GanttPage() {
   const router = useRouter()
@@ -43,7 +44,33 @@ export default function GanttPage() {
     }
   }
 
-  const semanaActual = getNumeroSemana(new Date().toISOString());
+  // Antes se comparaba solo por número de semana ISO, lo cual puede
+  // desalinearse justo en el cambio de año (los primeros días de enero
+  // a veces pertenecen, según el estándar ISO, a la semana 52/53 del
+  // año anterior). Esta función en cambio pregunta directamente "¿hoy
+  // cae dentro del rango real de fechas (lunes-domingo) de esta
+  // semana?" — así el resaltado siempre es correcto, sin importar el
+  // número de semana que le haya tocado según ISO.
+  const esSemanaDeHoy = (semana: number) => {
+    const hoy = new Date()
+    const lunes = lunesDeSemanaISO(hoy.getFullYear(), semana)
+    const domingo = new Date(lunes)
+    domingo.setDate(lunes.getDate() + 6)
+    domingo.setHours(23, 59, 59, 999)
+    return hoy >= lunes && hoy <= domingo
+  }
+
+  // Lunes de la semana ISO `semana` del año `anio` — para poder
+  // preguntarle a lecTocaEnFecha si el plan cae en algún día de esa semana.
+  const lunesDeSemanaISO = (anio: number, semana: number) => {
+    const cuatroEnero = new Date(anio, 0, 4)
+    const diaSemanaCuatroEnero = cuatroEnero.getDay() || 7
+    const lunesSemana1 = new Date(cuatroEnero)
+    lunesSemana1.setDate(cuatroEnero.getDate() - diaSemanaCuatroEnero + 1)
+    const lunesObjetivo = new Date(lunesSemana1)
+    lunesObjetivo.setDate(lunesSemana1.getDate() + (semana - 1) * 7)
+    return lunesObjetivo
+  }
 
   useEffect(() => {
     async function cargarCronograma() {
@@ -59,17 +86,22 @@ export default function GanttPage() {
     cargarCronograma()
   }, [])
 
-  // 👇 AHORA ENTIENDE INGLÉS NATIVO 👇
-  const checarSiEsProgramado = (frecuencia: string, semana: number) => {
-    const f = frecuencia?.toLowerCase() || 'monthly'
-    if (f === 'weekly') return true;
-    if (f === 'bi-weekly') return semana % 2 !== 0; // Semanas impares (1, 3, 5...)
-    const semanasMes = [1, 5, 9, 14, 18, 23, 27, 31, 36, 40, 45, 49]; 
-    if (f === 'monthly') return semanasMes.includes(semana);
-    if (f === 'quarterly') return [1, 14, 27, 40].includes(semana);
-    if (f === 'biannual') return [1, 27].includes(semana);
-    if (f === 'annual') return semana === 1;
-    return false;
+  // Antes esto usaba listas de semanas fijas iguales para TODAS las
+  // máquinas (ej. todo lo "Quarterly" caía en las semanas 1, 14, 27, 40
+  // sin importar cuántas máquinas tuvieras — por eso todo se apilaba en
+  // los mismos días). Ahora cada plan usa su propia Fecha_inicio, así
+  // que dos máquinas "Quarterly" con fechas de inicio distintas caen en
+  // semanas distintas — el balance de carga que armaste en Planeación
+  // se refleja aquí automáticamente.
+  const checarSiEsProgramado = (plan: any, semana: number) => {
+    if (!plan.Fecha_inicio) return false
+    const lunes = lunesDeSemanaISO(new Date().getFullYear(), semana)
+    for (let i = 0; i < 7; i++) {
+      const dia = new Date(lunes)
+      dia.setDate(lunes.getDate() + i)
+      if (lecTocaEnFecha(plan.Fecha_inicio, plan.Frecuencia, dia)) return true
+    }
+    return false
   }
 
   if (cargando) return <div className="p-8 text-emerald-400 font-bold animate-pulse text-center mt-20">Analyzing annual maintenance schedule...</div>
@@ -120,7 +152,7 @@ export default function GanttPage() {
                 </th>
                 {mesesAnio.map((mes) => (
                   mes.semanas.map(semana => (
-                    <th key={semana} className={`py-2 text-center min-w-[36px] border-l border-slate-800/80 ${semana === semanaActual ? 'bg-indigo-500/20 text-indigo-300 font-black' : ''}`}>
+                    <th key={semana} className={`py-2 text-center min-w-[36px] border-l border-slate-800/80 ${esSemanaDeHoy(semana) ? 'bg-indigo-500/20 text-indigo-300 font-black' : ''}`}>
                       W{semana}
                     </th>
                   ))
@@ -147,7 +179,7 @@ export default function GanttPage() {
 
                     {mesesAnio.map((mes) => (
                       mes.semanas.map(semana => {
-                        const esProgramado = checarSiEsProgramado(plan.Frecuencia, semana);
+                        const esProgramado = checarSiEsProgramado(plan, semana);
                         
                         const otDeLaSemana = ordenes.find(o => {
                           const isSameEquipo = o.equipo_id === plan.equipo_id;
@@ -160,7 +192,7 @@ export default function GanttPage() {
                         const diaCorto = plan.dia_semana ? plan.dia_semana.substring(0, 2).toUpperCase() : '';
 
                         return (
-                          <td key={semana} className={`p-1.5 border-l border-slate-800/50 relative ${semana === semanaActual ? 'bg-indigo-500/10' : ''}`}>
+                          <td key={semana} className={`p-1.5 border-l border-slate-800/50 relative ${esSemanaDeHoy(semana) ? 'bg-indigo-500/10' : ''}`}>
                             
                             {otDeLaSemana ? (
                               <div 

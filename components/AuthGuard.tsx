@@ -3,16 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter, usePathname } from "next/navigation"
 import { supabase } from "@/lib/supabase"
-
-// Rutas a las que un operador SÍ puede entrar aunque escriba la URL a mano.
-// Todo lo demás lo rebota al kiosko.
-const RUTAS_PERMITIDAS_OPERADOR = ['/kiosko', '/login', '/perfil']
-
-function operadorPuedeVer(pathname: string) {
-  return RUTAS_PERMITIDAS_OPERADOR.some(
-    (ruta) => pathname === ruta || pathname.startsWith(ruta + '/')
-  )
-}
+import { rutaPermitidaParaRol, rutaSeguraParaRol } from "@/lib/permisos"
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter()
@@ -33,9 +24,9 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
       }
 
       if (session) {
-        // Revisamos el rol en 'perfiles'. Si es 'operador' y está tratando
-        // de entrar a algo fuera del kiosko, lo mandamos para allá antes
-        // de mostrar nada de la página que intentó abrir.
+        // Revisamos el rol en 'perfiles' contra lib/permisos.ts — si no
+        // tiene acceso a esta ruta, lo mandamos a un lugar seguro para
+        // su rol antes de mostrar nada de la página que intentó abrir.
         const { data: perfil } = await supabase
           .from('perfiles')
           .select('rol')
@@ -44,8 +35,12 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
 
         const rol = (perfil as any)?.rol?.toLowerCase()
 
-        if (rol === 'operador' && !operadorPuedeVer(pathname)) {
-          router.replace('/kiosko')
+        // Regla general: cualquier rol contra cualquier ruta con permiso
+        // definido en lib/permisos.ts (la misma fuente que usa el Sidebar
+        // para decidir qué links mostrar). Si no tiene permiso, lo
+        // mandamos a un lugar seguro para su rol, no solo a /kiosko.
+        if (!rutaPermitidaParaRol(pathname, rol)) {
+          router.replace(rutaSeguraParaRol(rol))
           return
         }
       }

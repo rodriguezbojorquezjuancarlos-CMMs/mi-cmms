@@ -69,12 +69,13 @@ export default function KioskoOperadores() {
     setProcesando(true)
 
     try {
-      // 1. Verificar si el NIP existe en la tabla "perfiles"
-      const { data: operador, error: errorNipDb } = await supabase
-        .from("perfiles")
-        .select("id, nombre")
-        .eq("nip", nip)
-        .maybeSingle()
+      // 1. Verificar el NIP a través de una función segura (RPC) en vez
+      //    de consultar "perfiles" directo — así nunca se expone la
+      //    columna nip completa a quien esté usando el kiosko.
+      const { data: operadores, error: errorNipDb } = await supabase
+        .rpc("verificar_nip", { nip_ingresado: nip })
+
+      const operador = operadores?.[0]
 
       if (errorNipDb) throw new Error("Error connecting to operator database.")
       
