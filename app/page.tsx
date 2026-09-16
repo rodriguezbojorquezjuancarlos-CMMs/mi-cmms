@@ -123,14 +123,21 @@ export default function CommandCenterPage() {
     // reemplazamos por algo que sí corresponde a datos reales.)
     if (!dataIoT) return 'OFFLINE'  // nunca hemos recibido ni una lectura de esta máquina
 
-    const sobrecarga = Number(dataIoT.amperaje_motor) > UMBRAL_AMPERAJE_ALERTA
-    const sobrecalentado = Number(dataIoT.temperatura_olla) > UMBRAL_TEMPERATURA_ALERTA
+    const amperaje = Number(dataIoT.amperaje_motor)
+    const temperatura = Number(dataIoT.temperatura_olla)
+
+    // Llegó una lectura, pero viene toda en cero (sin sensor de
+    // vibración/amperaje bien conectado, por ejemplo) — sin señal
+    // real, se trata igual que si no hubiera lectura.
+    if (amperaje < 0.1 && temperatura < 0.1) return 'OFFLINE'
+
+    const sobrecarga = amperaje > UMBRAL_AMPERAJE_ALERTA
+    const sobrecalentado = temperatura > UMBRAL_TEMPERATURA_ALERTA
     if (sobrecarga || sobrecalentado) return 'ALERT'
 
-    // Está prendida y reportando, pero sin consumo real: el motor no
-    // está trabajando (< 0.1 A ya cuenta como "prácticamente cero",
-    // para no confundir ruido del sensor con consumo real).
-    if (Number(dataIoT.amperaje_motor) < 0.1) return 'IDLE'
+    // Temperatura sí tiene valor (gabinete prendido y reportando),
+    // pero sin consumo real de motor: prendida, sin trabajar.
+    if (amperaje < 0.1) return 'IDLE'
 
     return 'OPERATING';
   }

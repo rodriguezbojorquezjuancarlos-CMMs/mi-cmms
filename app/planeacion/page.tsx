@@ -4,8 +4,9 @@
 import { useState, useEffect, useMemo } from "react"
 import { supabase } from "@/lib/supabase"
 import Link from "next/link"
-import { Trash2, AlertTriangle } from "lucide-react"
+import { Trash2, AlertTriangle, Pencil } from "lucide-react"
 import { lecTocaEnFecha, contarColisionesEnFecha, proximaFecha, FRECUENCIAS } from "@/lib/recurrencia"
+import { EMPRESA_ID_JBI } from "@/lib/constantes"
 
 export default function PlaneacionPage() {
   const [equipos, setEquipos] = useState<any[]>([])
@@ -17,6 +18,7 @@ export default function PlaneacionPage() {
   const [equipoId, setEquipoId] = useState("")
   const [tarea, setTarea] = useState("")
   const [frecuencia, setFrecuencia] = useState("Monthly")
+  const [editandoId, setEditandoId] = useState<number | null>(null)
 
   // Fecha de inicio real — reemplaza al viejo "Suggested Day" suelto.
   // Es el ancla desde la que se calcula TODA la recurrencia futura.
@@ -42,8 +44,9 @@ export default function PlaneacionPage() {
   const colisiones = useMemo(() => {
     if (!fechaInicio) return 0
     const fechaObj = new Date(fechaInicio + 'T00:00:00')
-    return contarColisionesEnFecha(planes, fechaObj)
-  }, [planes, fechaInicio])
+    const planesComparables = planes.filter(p => p.id !== editandoId) // no chocar contigo mismo al editar
+    return contarColisionesEnFecha(planesComparables, fechaObj)
+  }, [planes, fechaInicio, editandoId])
 
   useEffect(() => {
     cargarDatos()
@@ -59,7 +62,7 @@ export default function PlaneacionPage() {
     setCargando(false)
   }
 
-  // GUARDAR PLAN 100% EN INGLÉS
+  // GUARDAR PLAN — crea uno nuevo, o actualiza si estás editando
   async function guardarPlan(e: React.FormEvent) {
     e.preventDefault()
     if (!equipoId || !tarea || !fechaInicio) return alert("Please fill in all required fields")
@@ -68,31 +71,52 @@ export default function PlaneacionPage() {
     // de la fecha que elegiste — ya no se pregunta aparte.
     const diaDerivado = new Date(fechaInicio + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long' })
 
-    const { error } = await supabase.from("plan_maestro").insert([
-      { 
-        equipo_id: equipoId, 
-        Tarea: tarea, 
-        Frecuencia: frecuencia,
-        Fecha_inicio: fechaInicio,
-        dia_semana: diaDerivado
-      }
-    ])
+    const payload = {
+      equipo_id: equipoId,
+      Tarea: tarea,
+      Frecuencia: frecuencia,
+      Fecha_inicio: fechaInicio,
+      dia_semana: diaDerivado
+    }
+
+    const { error } = editandoId
+      ? await supabase.from("plan_maestro").update(payload).eq("id", editandoId)
+      : await supabase.from("plan_maestro").insert([payload])
 
     if (error) {
       alert("Error saving: " + error.message)
     } else {
-      setTarea("")
+      cancelarEdicion()
       cargarDatos() 
     }
   }
 
+  // Carga un plan existente en el formulario para editarlo
+  function empezarEdicion(plan: any) {
+    setEditandoId(plan.id)
+    setEquipoId(plan.equipo_id || "")
+    setTarea(plan.Tarea || "")
+    setFrecuencia(plan.Frecuencia || "Monthly")
+    setFechaInicio(plan.Fecha_inicio || hoyStr)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  function cancelarEdicion() {
+    setEditandoId(null)
+    setEquipoId("")
+    setTarea("")
+    setFrecuencia("Monthly")
+    setFechaInicio(hoyStr)
+  }
+
   // ELIMINAR PLAN MAESTRO
-  const borrarPlan = async (id: string) => {
+  const borrarPlan = async (id: number) => {
     if (!window.confirm("Are you sure you want to delete this master plan?")) return;
     try {
       const { error } = await supabase.from('plan_maestro').delete().eq('id', id);
       if (error) throw error;
       setPlanes(planes.filter(p => p.id !== id));
+      if (editandoId === id) cancelarEdicion()
     } catch (error: any) {
       alert("Error deleting plan: " + error.message);
     }
@@ -107,8 +131,9 @@ export default function PlaneacionPage() {
       let empresaIdValido = equipo?.empresa_id;
 
       if (!empresaIdValido) {
-        const { data: empresaFallback } = await supabase.from("empresas").select("id").limit(1).single();
-        empresaIdValido = empresaFallback?.id;
+        // Antes: "select id from empresas limit 1" (sin orden —
+        // riesgoso). Ya solo tienes una empresa real, la fijamos directo.
+        empresaIdValido = EMPRESA_ID_JBI;
       }
 
       if (!empresaIdValido) {
@@ -165,9 +190,14 @@ export default function PlaneacionPage() {
         </Link>
       </div>
 
-      {/* FORMULARIO DE ALTA */}
-      <div className="bg-[#0B1121] border border-slate-800 rounded-3xl p-8 shadow-2xl relative overflow-hidden">
+      {/* FORMULARIO DE ALTA / EDICIÓN */}
+      <div className={`bg-[#0B1121] border rounded-3xl p-8 shadow-2xl relative overflow-hidden transition-colors ${editandoId ? 'border-amber-500/40' : 'border-slate-800'}`}>
         <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/5 rounded-full blur-3xl"></div>
+        {editandoId && (
+          <div className="relative z-10 mb-6 text-amber-400 text-sm font-bold flex items-center gap-2">
+            ✏️ Editing existing plan #{editandoId}
+          </div>
+        )}
         <form onSubmit={guardarPlan} className="relative z-10 space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
@@ -207,9 +237,16 @@ export default function PlaneacionPage() {
               </p>
             </div>
           )}
-          <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-4 rounded-xl transition-all shadow-[0_0_20px_rgba(79,70,229,0.3)]">
-            + Save Maintenance Plan
-          </button>
+          <div className="flex gap-3">
+            <button type="submit" className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-4 rounded-xl transition-all shadow-[0_0_20px_rgba(79,70,229,0.3)]">
+              {editandoId ? 'Update Maintenance Plan' : '+ Save Maintenance Plan'}
+            </button>
+            {editandoId && (
+              <button type="button" onClick={cancelarEdicion} className="px-6 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-4 rounded-xl transition-all">
+                Cancel
+              </button>
+            )}
+          </div>
         </form>
       </div>
 
@@ -255,6 +292,14 @@ export default function PlaneacionPage() {
                         className="bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-slate-950 border border-emerald-500/30 px-5 py-2.5 rounded-lg text-xs font-bold transition-all disabled:opacity-50"
                       >
                         {generandoId === plan.id ? 'Generating...' : 'Generate Manual WO'}
+                      </button>
+
+                      <button 
+                        onClick={() => empezarEdicion(plan)}
+                        className="text-slate-500 hover:text-indigo-400 hover:bg-indigo-500/10 p-2.5 rounded-lg transition-colors border border-transparent hover:border-indigo-500/30"
+                        title="Edit Plan"
+                      >
+                        <Pencil size={16} />
                       </button>
 
                       <button 

@@ -1,7 +1,7 @@
 // @ts-nocheck
 "use client"
 
-import React, { useEffect, useState, use } from "react"
+import React, { useEffect, useState } from "react"
 import { supabase } from "@/lib/supabase"
 import Link from "next/link"
 import { 
@@ -9,10 +9,10 @@ import {
 } from "lucide-react"
 
 export default function VistaTelemetriaDetalle({ params }: any) {
-  // === LA SOLUCIÓN ESTÁ AQUÍ ===
-  const resolvedParams = use(params);
-  const maquinaId = resolvedParams.id; 
-  // =============================
+  // Tu proyecto usa Next.js 14 (no 15), así que "params" llega como un
+  // objeto normal, NO como una Promise — no hace falta (ni funciona)
+  // desenvolverlo con use(). Por eso la pantalla tronaba al entrar aquí.
+  const maquinaId = params.id;
 
   const [equipo, setEquipo] = useState<any>(null)
   const [telemetria, setTelemetria] = useState<any>(null)
@@ -74,14 +74,27 @@ export default function VistaTelemetriaDetalle({ params }: any) {
 
   // Lógica de estado igual a la del mapa
   const amps = telemetria ? Number(telemetria.amperaje_motor) : 0;
+  const temp = telemetria ? Number(telemetria.temperatura_olla) : 0;
+  const UMBRAL_AMPERAJE_ALERTA = 60   // mismo umbral que el Command Center
+  const UMBRAL_TEMPERATURA_ALERTA = 60
+  const EPS = 0.1 // "prácticamente cero" — evita que ruido del sensor cuente como señal real
   let estado = 'OFFLINE';
   let colorEstado = 'bg-slate-500 text-slate-300';
   let glowEstado = 'shadow-[0_0_15px_#64748b]';
 
   if (telemetria) {
-    if (amps <= 0.5) { estado = 'IDLE'; colorEstado = 'bg-sky-500/20 text-sky-400 border-sky-500/50'; glowEstado = 'shadow-[0_0_15px_#0ea5e9]'; }
-    else if (amps >= 32.0) { estado = 'OVERLOAD'; colorEstado = 'bg-red-500/20 text-red-400 border-red-500/50 animate-pulse'; glowEstado = 'shadow-[0_0_20px_#ef4444]'; }
-    else { estado = 'OPERATING'; colorEstado = 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50'; glowEstado = 'shadow-[0_0_15px_#10b981]'; }
+    if (amps < EPS && temp < EPS) {
+      // Llegó una lectura, pero viene toda en cero — sin señal real
+      // (típico si aún no hay sensor de vibración/amperaje bien conectado).
+      estado = 'OFFLINE'; colorEstado = 'bg-slate-500/20 text-slate-400 border-slate-500/50'; glowEstado = 'shadow-[0_0_15px_#64748b]';
+    } else if (amps > UMBRAL_AMPERAJE_ALERTA || temp > UMBRAL_TEMPERATURA_ALERTA) {
+      estado = 'OVERLOAD'; colorEstado = 'bg-red-500/20 text-red-400 border-red-500/50 animate-pulse'; glowEstado = 'shadow-[0_0_20px_#ef4444]';
+    } else if (amps < EPS) {
+      // Temperatura sí tiene valor pero no hay consumo de motor: prendida, sin trabajar.
+      estado = 'IDLE'; colorEstado = 'bg-sky-500/20 text-sky-400 border-sky-500/50'; glowEstado = 'shadow-[0_0_15px_#0ea5e9]';
+    } else {
+      estado = 'OPERATING'; colorEstado = 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50'; glowEstado = 'shadow-[0_0_15px_#10b981]';
+    }
   }
 
   return (
@@ -155,7 +168,7 @@ export default function VistaTelemetriaDetalle({ params }: any) {
                 title="Cabinet Temp"
                 value={telemetria ? Number(telemetria.temperatura_olla).toFixed(1) : '--'}
                 unit="°C"
-                alert={telemetria && Number(telemetria.temperatura_olla) > 45} // Alerta si pasa de 45 grados
+                alert={telemetria && Number(telemetria.temperatura_olla) > UMBRAL_TEMPERATURA_ALERTA}
               />
               <SensorCard 
                 icon={<Activity className="w-8 h-8 text-sky-400" />}
@@ -187,7 +200,7 @@ export default function VistaTelemetriaDetalle({ params }: any) {
                   </thead>
                   <tbody>
                     {historial.map((log, idx) => {
-                      const isHighAmp = Number(log.amperaje_motor) >= 32.0;
+                      const isHighAmp = Number(log.amperaje_motor) > UMBRAL_AMPERAJE_ALERTA;
                       return (
                         <tr key={idx} className="border-b border-[#1f2937]/50 last:border-0 hover:bg-[#1e293b]/30 transition-colors">
                           <td className="py-3 text-slate-300 font-mono text-xs">

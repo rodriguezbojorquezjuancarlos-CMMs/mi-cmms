@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { EMPRESA_ID_JBI } from '@/lib/constantes';
 
 export async function POST(req: Request) {
   try {
@@ -76,13 +77,14 @@ export async function POST(req: Request) {
       }
     }
 
-    // Buscar empresa
-    const { data: empresa } = await supabaseAdmin.from("empresas").select("id").limit(1).maybeSingle();
+    // Antes: "select id from empresas limit 1" (sin orden — riesgoso).
+    // Ya solo tienes una empresa real, así que la fijamos directo.
+    const empresaId = EMPRESA_ID_JBI;
 
     // 4. Crear la Orden Correctiva
     const nuevaOrden = {
       equipo_id: equipoId, 
-      empresa_id: empresa?.id,
+      empresa_id: empresaId,
       descripcion_falla: infoProcesada.falla || mensaje,
       tipo_mantenimiento: 'Correctivo',
       estatus: 'Abierta', 

@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { lecTocaEnFecha } from '@/lib/recurrencia';
+import { EMPRESA_ID_JBI } from '@/lib/constantes';
 
 export async function GET(request: Request) {
   // 1. Candado de seguridad (Solo bloquea si está en Vercel Producción, permite testeo en Localhost)
@@ -34,8 +35,11 @@ export async function GET(request: Request) {
       return NextResponse.json({ mensaje: `No preventive tasks due today (${fechaLocal.toDateString()}).` });
     }
 
-    const { data: empresaFallback } = await supabaseAdmin.from("empresas").select("id").limit(1).single();
-    const empresaIdValido = empresaFallback?.id;
+    // Antes esto era "select id from empresas limit 1" — un lookup
+    // sin orden que, en el momento equivocado, puede devolver una
+    // fila que no esperas. Ya solo tienes una empresa real, así que
+    // la fijamos directo.
+    const empresaIdValido = EMPRESA_ID_JBI;
 
     const nuevasOrdenes = planesQueTocanHoy.map((plan: any) => {
       const fechaMadrugada = new Date();
