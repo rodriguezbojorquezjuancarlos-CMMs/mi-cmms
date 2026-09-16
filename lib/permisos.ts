@@ -24,7 +24,15 @@ export const RUTAS_POR_ROL: { ruta: string; roles: string[] }[] = [
 ]
 
 export function rolesDe(ruta: string): string[] {
-  return RUTAS_POR_ROL.find(r => r.ruta === ruta)?.roles || []
+  // Coincidencia más específica primero (ej. '/financial/tracking-maintenance'
+  // debe ganarle a '/financial' si ambas aplican) — mismo criterio que usa
+  // rutaPermitidaParaRol(), para que nunca queden rutas "huérfanas" con
+  // roles vacíos por no tener una entrada exacta.
+  const reglasQueAplican = RUTAS_POR_ROL.filter(
+    r => ruta === r.ruta || ruta.startsWith(r.ruta + '/')
+  )
+  if (reglasQueAplican.length === 0) return []
+  return [...reglasQueAplican].sort((a, b) => b.ruta.length - a.ruta.length)[0].roles
 }
 
 // Rutas a las que CUALQUIER rol autenticado puede entrar — no son

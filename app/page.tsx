@@ -16,6 +16,7 @@ export default function CommandCenterPage() {
   const [mostrarSaludo, setMostrarSaludo] = useState(true) 
   const [saludoTexto, setSaludoTexto] = useState("Hello")
   const [nombreUsuario, setNombreUsuario] = useState("Executive") 
+  const [ubicacion, setUbicacion] = useState({ empresa: 'JBI', sucursal: 'Nogales' })
   
   const [viewMode, setViewMode] = useState<"2D" | "3D">("3D")
   const [zoomLevel, setZoomLevel] = useState(1.1)
@@ -33,6 +34,24 @@ export default function CommandCenterPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (user && user.user_metadata?.full_name) {
         setNombreUsuario(user.user_metadata.full_name.split(' ')[0]);
+      }
+
+      // Empresa/sucursal reales para el breadcrumb — antes era texto
+      // fijo ("Nogales Plant") sin importar en qué planta estuvieras.
+      if (user) {
+        const { data: perfil } = await supabase
+          .from('perfiles')
+          .select('sucursales(nombre, empresas(nombre))')
+          .eq('id', user.id)
+          .single()
+
+        const sucursalData = (perfil as any)?.sucursales
+        if (sucursalData) {
+          setUbicacion({
+            empresa: sucursalData.empresas?.nombre || 'JBI',
+            sucursal: sucursalData.nombre || ''
+          })
+        }
       }
 
       const hora = new Date().getHours();
@@ -163,9 +182,9 @@ export default function CommandCenterPage() {
         <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4 border-b border-slate-800/60 pb-6">
           <div>
             <div className="flex items-center gap-2 mb-1 text-slate-400 text-xs font-medium">
-              <span>JBI Corporate</span>
+              <span>{ubicacion.empresa}</span>
               <ChevronRight className="w-3 h-3" />
-              <span>Nogales Plant</span>
+              <span>{ubicacion.sucursal}</span>
               <ChevronRight className="w-3 h-3" />
               <span className="text-slate-200">Command Center</span>
             </div>
